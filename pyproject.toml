@@ -3,6 +3,8 @@ name = "slack-claude-bridge"
 version = "0.1.0"
 description = "Bridge Slack <-> Claude Code so you can run long jobs and reply from your phone"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.10"
 dependencies = [
     "slack-bolt>=1.18",
