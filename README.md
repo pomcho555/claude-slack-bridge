@@ -211,6 +211,23 @@ fork (terminal + Slack both active) is still a fork.
 - **`job.py`** — the `slack-claude-job` / `slack-claude-notify` CLIs.
 - **`stop_hook.py`** — the `slack-claude-stop-hook` Stop-hook entry point.
 
+## Testing
+
+```bash
+uv sync --group dev
+uv run pytest
+```
+
+The suite is **end-to-end against the real seams** — a real `ClaudeRunner`
+subprocess (driven by `tests/fake_claude.py`, a stand-in for the `claude` CLI)
+and the real SQLite store — with only Slack faked. It pins the bridge's
+observable behaviour: mention → job → result, reply → `--resume`, allow-list
+enforcement, long-result upload, and the Stop-hook path (posts *this* turn's
+answer, waits past the transcript-flush race, collapses repeat fires into one
+thread). Because it captures behaviour rather than implementation, it doubles
+as the contract for any future rewrite (e.g. a port to another language): run
+the same scenarios and diff the Slack output.
+
 ## Notes & limitations
 
 - Per-thread executors are kept for the process lifetime — fine for personal

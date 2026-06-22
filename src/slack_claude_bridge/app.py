@@ -45,6 +45,161 @@ class ThreadWorkers:
         pool.submit(fn, *args)
 
 
+class SlackPoster:
+    """The outbound Slack surface the bridge core writes through.
+
+    Going through this small interface (instead of calling ``app.client``
+    directly) is what makes the core flows testable without a live Slack, and
+    it is the seam a future rewrite re-implements.
+    """
+
+    def __init__(self, client) -> None:
+        self._client = client
+
+    def post(self, channel: str, thread_ts: str, text: str) -> None:
+        self._client.chat_postMessage(channel=channel, thread_ts=thread_ts, text=text)
+
+    def upload(self, channel: str, thread_ts: str, filename: str, title: str, content: str) -> None:
+        self._client.files_upload_v2(
+            channel=channel,
+            thread_ts=thread_ts,
+            filename=filename,
+            title=title,
+            content=content,
+        )
+
+
+def post_result(poster: SlackPoster, channel: str, thread_ts: str, result: ClaudeResult) -> None:
+    prefix = "❌ *Error*\n" if result.is_error else "✅ *Done*\n"
+    if len(result.text) <= MAX_TEXT:
+        poster.post(channel, thread_ts, prefix + result.text)
+        return
+    poster.post(channel, thread_ts, prefix + "_Result is long — see the attached file._")
+    poster.upload(channel, thread_ts, "claude-result.md", "Claude result", result.text)
+
+
+def is_allowed(config: Config, user: str | None) -> bool:
+    if not config.allowed_users:
+        return True
+    return user in config.allowed_users
+
+
+def run_new_job(
+    poster: SlackPoster,
+    store: SessionStore,
+    runner: ClaudeRunner,
+    channel: str,
+    thread_ts: str,
+    prompt: str,
+) -> None:
+    store.start(thread_ts, channel)
+    try:
+        result = runner.run_new(prompt)
+        store.finish(thread_ts, result.session_id, "error" if result.is_error else "done")
+        post_result(poster, channel, thread_ts, result)
+    except Exception as exc:  # noqa: BLE001 - report any failure back to Slack
+        logger.exception("new job failed")
+        store.finish(thread_ts, None, "error")
+        poster.post(channel, thread_ts, f"❌ Bridge error: {exc}")
+
+
+def run_reply(
+    poster: SlackPoster,
+    store: SessionStore,
+    runner: ClaudeRunner,
+    channel: str,
+    thread_ts: str,
+    prompt: str,
+) -> None:
+    row = store.get(thread_ts)
+    if row is None or not row.session_id:
+        poster.post(channel, thread_ts, "⚠️ No Claude session for this thread yet — ignoring.")
+        return
+    try:
+        result = runner.run_resume(row.session_id, prompt)
+        store.finish(thread_ts, result.session_id, "error" if result.is_error else "done")
+        post_result(poster, channel, thread_ts, result)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("reply failed")
+        store.finish(thread_ts, None, "error")
+        poster.post(channel, thread_ts, f"❌ Bridge error: {exc}")
+
+
+def handle_mention(
+    event: dict,
+    *,
+    poster: SlackPoster,
+    config: Config,
+    store: SessionStore,
+    runner: ClaudeRunner,
+    workers: ThreadWorkers,
+    bot_user_id: str,
+) -> None:
+    user = event.get("user")
+    if not is_allowed(config, user):
+        logger.info("Ignoring mention from disallowed user %s", user)
+        return
+
+    # Anchor the conversation at the thread root (or this message if it starts a
+    # new thread) so all follow-up replies map to one session.
+    thread_ts = event.get("thread_ts") or event["ts"]
+    channel = event["channel"]
+    prompt = _strip_mentions(event.get("text", ""))
+
+    if not prompt:
+        poster.post(channel, thread_ts, "👋 Mention me with a task to run.")
+        return
+
+    # A mention inside an already-tracked thread = continue that session.
+    if store.exists(thread_ts):
+        poster.post(channel, thread_ts, "💬 Continuing this session…")
+        workers.submit(thread_ts, run_reply, poster, store, runner, channel, thread_ts, prompt)
+    else:
+        poster.post(
+            channel,
+            thread_ts,
+            "🛠 Started — I'll reply in this thread when done. Reply here anytime to continue.",
+        )
+        workers.submit(thread_ts, run_new_job, poster, store, runner, channel, thread_ts, prompt)
+
+
+def handle_message(
+    event: dict,
+    *,
+    poster: SlackPoster,
+    config: Config,
+    store: SessionStore,
+    runner: ClaudeRunner,
+    workers: ThreadWorkers,
+    bot_user_id: str,
+) -> None:
+    # Only plain human messages: skip edits/deletes/joins and bot posts.
+    if event.get("subtype") or event.get("bot_id"):
+        return
+    # Mentions are handled by handle_mention; avoid double-processing.
+    if f"<@{bot_user_id}>" in event.get("text", ""):
+        return
+
+    thread_ts = event.get("thread_ts")
+    # Must be a reply inside a thread we own; ignore top-level chatter and the
+    # thread-root message itself.
+    if not thread_ts or thread_ts == event.get("ts"):
+        return
+    if not store.exists(thread_ts):
+        return
+
+    user = event.get("user")
+    if not is_allowed(config, user):
+        return
+
+    prompt = _strip_mentions(event.get("text", ""))
+    if not prompt:
+        return
+
+    channel = event["channel"]
+    workers.submit(thread_ts, run_reply, poster, store, runner, channel, thread_ts, prompt)
+
+
 def register_handlers(
     app: App,
     config: Config,
@@ -53,6 +208,8 @@ def register_handlers(
     workers: ThreadWorkers,
     bot_user_id: str,
 ) -> None:
+    poster = SlackPoster(app.client)
+
     @app.middleware
     def _log_every_event(logger, body, next):  # noqa: A002 - Bolt's arg name
         event = body.get("event", {}) if isinstance(body, dict) else {}
@@ -65,110 +222,29 @@ def register_handlers(
         )
         next()
 
-    def post(channel: str, thread_ts: str, text: str) -> None:
-        app.client.chat_postMessage(channel=channel, thread_ts=thread_ts, text=text)
-
-    def post_result(channel: str, thread_ts: str, result: ClaudeResult) -> None:
-        prefix = "❌ *Error*\n" if result.is_error else "✅ *Done*\n"
-        if len(result.text) <= MAX_TEXT:
-            post(channel, thread_ts, prefix + result.text)
-            return
-        post(channel, thread_ts, prefix + "_Result is long — see the attached file._")
-        app.client.files_upload_v2(
-            channel=channel,
-            thread_ts=thread_ts,
-            filename="claude-result.md",
-            title="Claude result",
-            content=result.text,
-        )
-
-    def is_allowed(user: str | None) -> bool:
-        if not config.allowed_users:
-            return True
-        return user in config.allowed_users
-
-    def run_new_job(channel: str, thread_ts: str, prompt: str) -> None:
-        store.start(thread_ts, channel)
-        try:
-            result = runner.run_new(prompt)
-            store.finish(thread_ts, result.session_id, "error" if result.is_error else "done")
-            post_result(channel, thread_ts, result)
-        except Exception as exc:  # noqa: BLE001 - report any failure back to Slack
-            logger.exception("new job failed")
-            store.finish(thread_ts, None, "error")
-            post(channel, thread_ts, f"❌ Bridge error: {exc}")
-
-    def run_reply(channel: str, thread_ts: str, prompt: str) -> None:
-        row = store.get(thread_ts)
-        if row is None or not row.session_id:
-            post(channel, thread_ts, "⚠️ No Claude session for this thread yet — ignoring.")
-            return
-        try:
-            result = runner.run_resume(row.session_id, prompt)
-            store.finish(thread_ts, result.session_id, "error" if result.is_error else "done")
-            post_result(channel, thread_ts, result)
-        except Exception as exc:  # noqa: BLE001
-            logger.exception("reply failed")
-            store.finish(thread_ts, None, "error")
-            post(channel, thread_ts, f"❌ Bridge error: {exc}")
-
     @app.event("app_mention")
-    def on_mention(event, say):
-        user = event.get("user")
-        if not is_allowed(user):
-            logger.info("Ignoring mention from disallowed user %s", user)
-            return
-
-        # Anchor the conversation at the thread root (or this message if it
-        # starts a new thread) so all follow-up replies map to one session.
-        thread_ts = event.get("thread_ts") or event["ts"]
-        channel = event["channel"]
-        prompt = _strip_mentions(event.get("text", ""))
-
-        if not prompt:
-            say(channel=channel, thread_ts=thread_ts, text="👋 Mention me with a task to run.")
-            return
-
-        # A mention inside an already-tracked thread = continue that session.
-        if store.exists(thread_ts):
-            say(channel=channel, thread_ts=thread_ts, text="💬 Continuing this session…")
-            workers.submit(thread_ts, run_reply, channel, thread_ts, prompt)
-        else:
-            say(
-                channel=channel,
-                thread_ts=thread_ts,
-                text="🛠 Started — I'll reply in this thread when done. "
-                "Reply here anytime to continue.",
-            )
-            workers.submit(thread_ts, run_new_job, channel, thread_ts, prompt)
+    def on_mention(event):
+        handle_mention(
+            event,
+            poster=poster,
+            config=config,
+            store=store,
+            runner=runner,
+            workers=workers,
+            bot_user_id=bot_user_id,
+        )
 
     @app.event("message")
     def on_message(event):
-        # Only plain human messages: skip edits/deletes/joins and bot posts.
-        if event.get("subtype") or event.get("bot_id"):
-            return
-        # Mentions are handled by on_mention; avoid double-processing.
-        if f"<@{bot_user_id}>" in event.get("text", ""):
-            return
-
-        thread_ts = event.get("thread_ts")
-        # Must be a reply inside a thread we own; ignore top-level chatter and
-        # the thread-root message itself.
-        if not thread_ts or thread_ts == event.get("ts"):
-            return
-        if not store.exists(thread_ts):
-            return
-
-        user = event.get("user")
-        if not is_allowed(user):
-            return
-
-        prompt = _strip_mentions(event.get("text", ""))
-        if not prompt:
-            return
-
-        channel = event["channel"]
-        workers.submit(thread_ts, run_reply, channel, thread_ts, prompt)
+        handle_message(
+            event,
+            poster=poster,
+            config=config,
+            store=store,
+            runner=runner,
+            workers=workers,
+            bot_user_id=bot_user_id,
+        )
 
 
 def main() -> None:
