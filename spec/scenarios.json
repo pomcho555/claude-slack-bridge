@@ -1,0 +1,149 @@
+{
+  "_README": "Language-neutral behavioral spec for the Slack<->Claude bridge. See spec/README.md for the schema and how a non-Python port consumes it. The Python reference harness is tests/test_spec.py.",
+
+  "inbound": [
+    {
+      "name": "new_mention_starts_job",
+      "config": {"allowed_users": []},
+      "claude": {"session": "sess-new-1", "result": "refactor done"},
+      "events": [
+        {"type": "app_mention", "user": "U1", "ts": "111.0", "channel": "C1", "text": "<@UBOT> refactor auth"}
+      ],
+      "expect": {
+        "posts": [
+          {"channel": "C1", "thread_ts": "111.0", "text_contains": "🛠 Started"},
+          {"channel": "C1", "thread_ts": "111.0", "text_contains": "✅ *Done*"}
+        ],
+        "post_any_contains": ["refactor done"],
+        "claude_invocations": [{"resume": null, "prompt_contains": "refactor auth"}],
+        "store": {"111.0": {"session_id": "sess-new-1"}}
+      }
+    },
+    {
+      "name": "mention_in_tracked_thread_resumes",
+      "config": {"allowed_users": []},
+      "claude": {"result": "continued"},
+      "seed": [{"thread_ts": "200.0", "channel": "C1", "session_id": "sess-existing"}],
+      "events": [
+        {"type": "app_mention", "user": "U1", "ts": "200.5", "thread_ts": "200.0", "channel": "C1", "text": "<@UBOT> keep going"}
+      ],
+      "expect": {
+        "posts": [
+          {"channel": "C1", "thread_ts": "200.0", "text_contains": "💬 Continuing"},
+          {"channel": "C1", "thread_ts": "200.0", "text_contains": "✅ *Done*"}
+        ],
+        "post_any_contains": ["continued"],
+        "claude_invocations": [{"resume": "sess-existing", "prompt_contains": "keep going"}]
+      }
+    },
+    {
+      "name": "plain_reply_in_tracked_thread_resumes",
+      "config": {"allowed_users": []},
+      "claude": {"result": "tests pass"},
+      "seed": [{"thread_ts": "300.0", "channel": "C1", "session_id": "sess-300"}],
+      "events": [
+        {"type": "message", "user": "U1", "ts": "300.9", "thread_ts": "300.0", "channel": "C1", "text": "and the tests?"}
+      ],
+      "expect": {
+        "post_any_contains": ["✅ *Done*"],
+        "claude_invocations": [{"resume": "sess-300", "prompt_contains": "and the tests"}]
+      }
+    },
+    {
+      "name": "reply_in_untracked_thread_ignored",
+      "config": {"allowed_users": []},
+      "events": [
+        {"type": "message", "user": "U1", "ts": "400.9", "thread_ts": "400.0", "channel": "C1", "text": "hello?"}
+      ],
+      "expect": {"posts": [], "no_claude": true}
+    },
+    {
+      "name": "top_level_message_ignored",
+      "config": {"allowed_users": []},
+      "events": [
+        {"type": "message", "user": "U1", "ts": "500.0", "channel": "C1", "text": "just chatting"}
+      ],
+      "expect": {"posts": [], "no_claude": true}
+    },
+    {
+      "name": "bot_own_message_ignored",
+      "config": {"allowed_users": []},
+      "events": [
+        {"type": "message", "bot_id": "B1", "ts": "600.9", "thread_ts": "600.0", "channel": "C1", "text": "✅ Done"}
+      ],
+      "expect": {"posts": [], "no_claude": true}
+    },
+    {
+      "name": "empty_mention_prompts_for_task",
+      "config": {"allowed_users": []},
+      "events": [
+        {"type": "app_mention", "user": "U1", "ts": "700.0", "channel": "C1", "text": "<@UBOT>"}
+      ],
+      "expect": {
+        "posts": [{"channel": "C1", "thread_ts": "700.0", "text_contains": "Mention me with a task"}],
+        "no_claude": true
+      }
+    },
+    {
+      "name": "disallowed_user_ignored",
+      "config": {"allowed_users": ["U_OK"]},
+      "events": [
+        {"type": "app_mention", "user": "U_BAD", "ts": "800.0", "channel": "C1", "text": "<@UBOT> do it"}
+      ],
+      "expect": {"posts": [], "no_claude": true}
+    },
+    {
+      "name": "long_result_uploaded_as_file",
+      "config": {"allowed_users": []},
+      "claude": {"result_len": 3600},
+      "events": [
+        {"type": "app_mention", "user": "U1", "ts": "900.0", "channel": "C1", "text": "<@UBOT> big one"}
+      ],
+      "expect": {
+        "post_any_contains": ["see the attached file"],
+        "uploads": [{"filename": "claude-result.md", "min_content_len": 3500}]
+      }
+    }
+  ],
+
+  "stop_hook": [
+    {
+      "name": "posts_latest_turn_answer",
+      "notify_channel": "C_NOTIFY",
+      "hook": {"session_id": "sess-A", "notify_flag": "1"},
+      "transcript": [
+        {"u": "Q1"}, {"think": true}, {"a": "ANSWER 1"},
+        {"u": "Q2"}, {"think": true}, {"a": "ANSWER 2"}
+      ],
+      "expect": {
+        "posts": [
+          {"channel": "C_NOTIFY", "thread_ts": null, "text_contains": "ANSWER 2", "text_not_contains": "ANSWER 1"}
+        ]
+      }
+    },
+    {
+      "name": "opt_out_when_flag_unset",
+      "notify_channel": "C_NOTIFY",
+      "hook": {"session_id": "sess-A", "notify_flag": "0"},
+      "transcript": [{"u": "Q"}, {"a": "A"}],
+      "expect": {"posts": []}
+    },
+    {
+      "name": "repeat_fire_same_session_reuses_thread",
+      "notify_channel": "C_NOTIFY",
+      "hook": {"session_id": "sess-A", "notify_flag": "1"},
+      "seed": [{"thread_ts": "root-existing", "channel": "C_NOTIFY", "session_id": "sess-A"}],
+      "transcript": [{"u": "Q"}, {"a": "second turn answer"}],
+      "expect": {
+        "posts": [{"channel": "C_NOTIFY", "thread_ts": "root-existing", "text_contains": "second turn answer"}]
+      }
+    },
+    {
+      "name": "long_answer_uploaded_as_file",
+      "notify_channel": "C_NOTIFY",
+      "hook": {"session_id": "sess-A", "notify_flag": "1"},
+      "transcript": [{"u": "Q"}, {"a_len": 3600}],
+      "expect": {"uploads": [{"filename": "claude-result.md"}]}
+    }
+  ]
+}
