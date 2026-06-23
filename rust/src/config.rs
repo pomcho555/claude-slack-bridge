@@ -31,6 +31,10 @@ fn opt(name: &str) -> Option<String> {
 
 impl Config {
     pub fn load() -> Result<Config, String> {
+        // Load .env from the current dir (mirrors python-dotenv in config.py).
+        // Missing file is fine; real env vars still win.
+        let _ = dotenvy::dotenv();
+
         let allowed_users = env::var("ALLOWED_USERS")
             .unwrap_or_default()
             .split(',')

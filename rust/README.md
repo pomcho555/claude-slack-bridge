@@ -58,7 +58,11 @@ keeps one OS thread per Slack thread (sequential per thread, parallel across).
 ```bash
 cd rust
 cp ../.env.example .env   # set SLACK_BOT_TOKEN, SLACK_APP_TOKEN, ALLOWED_USERS, CLAUDE_WORKDIR
-cargo run --release
+cargo run --release       # runs the bridge (default-run); .env is loaded automatically
+
+# the other binaries:
+cargo run --release --bin slack-claude-job -- "refactor the auth module"
+echo "done" | cargo run --release --bin slack-claude-notify -- --session <id>
 ```
 
 ## Run the spec
