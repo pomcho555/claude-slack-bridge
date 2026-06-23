@@ -7,7 +7,10 @@
 //! NOTE: timeout handling is intentionally language-specific and not modeled in
 //! the shared spec (see spec/README.md "Out of scope"); the fake CLI is fast.
 
-use std::process::Command;
+use std::io::Read;
+use std::process::{Command, Stdio};
+use std::thread;
+use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
@@ -56,9 +59,10 @@ impl ClaudeRunner {
             cmd.arg(a);
         }
         cmd.arg(prompt); // positional prompt last
+        cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
 
-        let output = match cmd.output() {
-            Ok(o) => o,
+        let mut child = match cmd.spawn() {
+            Ok(c) => c,
             Err(_) => {
                 return ClaudeResult {
                     session_id: resumed(),
@@ -68,9 +72,52 @@ impl ClaudeRunner {
             }
         };
 
-        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        let code_nonzero = !output.status.success();
+        // Drain the pipes on threads so a chatty child can't deadlock on a full
+        // pipe buffer while we poll for completion.
+        let mut out_pipe = child.stdout.take().unwrap();
+        let mut err_pipe = child.stderr.take().unwrap();
+        let out_reader = thread::spawn(move || {
+            let mut s = String::new();
+            let _ = out_pipe.read_to_string(&mut s);
+            s
+        });
+        let err_reader = thread::spawn(move || {
+            let mut s = String::new();
+            let _ = err_pipe.read_to_string(&mut s);
+            s
+        });
+
+        // std has no wait-with-timeout; poll try_wait and kill past the deadline.
+        let deadline = Instant::now() + Duration::from_secs(self.timeout);
+        let status = loop {
+            match child.try_wait() {
+                Ok(Some(st)) => break Some(st),
+                Ok(None) => {
+                    if Instant::now() >= deadline {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        break None;
+                    }
+                    thread::sleep(Duration::from_millis(20));
+                }
+                Err(_) => break None,
+            }
+        };
+
+        let status = match status {
+            Some(st) => st,
+            None => {
+                return ClaudeResult {
+                    session_id: resumed(),
+                    text: format!("⏱ Claude timed out after {}s.", self.timeout),
+                    is_error: true,
+                }
+            }
+        };
+
+        let stdout = out_reader.join().unwrap_or_default().trim().to_string();
+        let stderr = err_reader.join().unwrap_or_default().trim().to_string();
+        let code_nonzero = !status.success();
 
         if stdout.is_empty() {
             let msg = if !stderr.is_empty() { stderr } else { "Claude produced no output.".to_string() };

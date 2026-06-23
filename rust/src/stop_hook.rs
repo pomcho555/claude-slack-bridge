@@ -98,5 +98,22 @@ pub fn run<C: SlackClient>(
     channel: Option<&str>,
     payload: &str,
 ) {
-    unimplemented!("stop_hook::run: port from stop_hook.py:main")
+    if !notify_enabled {
+        return; // opt-in only — stay quiet for ordinary sessions
+    }
+
+    let data: Value = serde_json::from_str(payload).unwrap_or(Value::Null);
+    let session_id = data.get("session_id").and_then(|v| v.as_str());
+    let transcript = data.get("transcript_path").and_then(|v| v.as_str());
+
+    let text = transcript
+        .and_then(final_message)
+        .unwrap_or_else(|| "(Claude session finished, but no final message was found.)".to_string());
+
+    let channel = match channel {
+        Some(c) if !c.is_empty() => c,
+        _ => return, // no SLACK_NOTIFY_CHANNEL configured; skip the push
+    };
+
+    push_result(client, store, channel, session_id, &text, false, Some("✅ *Claude session done*"));
 }

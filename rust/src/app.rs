@@ -138,7 +138,47 @@ pub fn handle_mention<P: Poster, W: Workers>(
     workers: &W,
     bot_user_id: &str,
 ) {
-    unimplemented!("handle_mention: port from app.py:handle_mention")
+    if !is_allowed(config, event.user.as_deref()) {
+        return;
+    }
+
+    // Anchor the conversation at the thread root (or this message if it starts a
+    // new thread) so all follow-up replies map to one session.
+    let thread_ts = match event.thread_ts.clone().or_else(|| event.ts.clone()) {
+        Some(t) => t,
+        None => return,
+    };
+    let channel = match event.channel.clone() {
+        Some(c) => c,
+        None => return,
+    };
+    let prompt = strip_mentions(event.text.as_deref().unwrap_or(""));
+
+    if prompt.is_empty() {
+        poster.post(&channel, Some(&thread_ts), "👋 Mention me with a task to run.");
+        return;
+    }
+
+    // A mention inside an already-tracked thread = continue that session.
+    if store.exists(&thread_ts) {
+        poster.post(&channel, Some(&thread_ts), "💬 Continuing this session…");
+        let (c, t, p) = (channel.clone(), thread_ts.clone(), prompt);
+        workers.submit(
+            &thread_ts,
+            Box::new(move || run_reply(poster, store, runner, &c, &t, &p)),
+        );
+    } else {
+        poster.post(
+            &channel,
+            Some(&thread_ts),
+            "🛠 Started — I'll reply in this thread when done. Reply here anytime to continue.",
+        );
+        let (c, t, p) = (channel.clone(), thread_ts.clone(), prompt);
+        workers.submit(
+            &thread_ts,
+            Box::new(move || run_new_job(poster, store, runner, &c, &t, &p)),
+        );
+    }
 }
 
 /// Handle a plain `message`: continue a tracked thread, ignoring chatter, bot
@@ -152,5 +192,45 @@ pub fn handle_message<P: Poster, W: Workers>(
     workers: &W,
     bot_user_id: &str,
 ) {
-    unimplemented!("handle_message: port from app.py:handle_message")
+    // Only plain human messages: skip edits/deletes/joins and bot posts.
+    if event.subtype.is_some() || event.bot_id.is_some() {
+        return;
+    }
+    let text = event.text.as_deref().unwrap_or("");
+    // Mentions are handled by handle_mention; avoid double-processing.
+    if text.contains(&format!("<@{bot_user_id}>")) {
+        return;
+    }
+
+    // Must be a reply inside a thread we own; ignore top-level chatter and the
+    // thread-root message itself.
+    let thread_ts = match &event.thread_ts {
+        Some(t) => t.clone(),
+        None => return,
+    };
+    if Some(&thread_ts) == event.ts.as_ref() {
+        return;
+    }
+    if !store.exists(&thread_ts) {
+        return;
+    }
+
+    if !is_allowed(config, event.user.as_deref()) {
+        return;
+    }
+
+    let prompt = strip_mentions(text);
+    if prompt.is_empty() {
+        return;
+    }
+
+    let channel = match event.channel.clone() {
+        Some(c) => c,
+        None => return,
+    };
+    let (c, t, p) = (channel, thread_ts.clone(), prompt);
+    workers.submit(
+        &thread_ts,
+        Box::new(move || run_reply(poster, store, runner, &c, &t, &p)),
+    );
 }
