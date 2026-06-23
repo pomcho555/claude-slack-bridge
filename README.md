@@ -1,6 +1,7 @@
 # Slack ↔ Claude Code bridge
 
 [![e2e](https://github.com/pomcho555/claude-slack-bridge/actions/workflows/e2e.yml/badge.svg)](https://github.com/pomcho555/claude-slack-bridge/actions/workflows/e2e.yml)
+[![security](https://github.com/pomcho555/claude-slack-bridge/actions/workflows/security.yml/badge.svg)](https://github.com/pomcho555/claude-slack-bridge/actions/workflows/security.yml)
 
 Run long Claude Code jobs from Slack and reply to them from your phone.
 
@@ -229,6 +230,13 @@ answer, waits past the transcript-flush race, collapses repeat fires into one
 thread). Because it captures behaviour rather than implementation, it doubles
 as the contract for any future rewrite (e.g. a port to another language): run
 the same scenarios and diff the Slack output.
+
+### Rust port
+
+A Rust rewrite lives in [`rust/`](rust/) and is validated against the *same*
+`spec/scenarios.json` (it reuses `tests/fake_claude.py` verbatim). The core is
+fully ported and spec-green (`cd rust && cargo test`); only the Slack Socket
+Mode transport (`main`) is outstanding. See [`rust/README.md`](rust/README.md).
 
 ## Notes & limitations
 

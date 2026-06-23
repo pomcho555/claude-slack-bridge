@@ -1,0 +1,16 @@
+# Dependabot opens auto-update PRs. It is NOT a CI gate (it only notifies); the
+# failing vuln gate is cargo-deny in security.yml.
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /rust
+    schedule:
+      interval: weekly
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
