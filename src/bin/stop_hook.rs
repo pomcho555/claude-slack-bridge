@@ -18,27 +18,61 @@ use slack_claude_bridge::store::SessionStore;
 
 const TRUTHY: [&str; 4] = ["1", "true", "yes", "on"];
 
+const USAGE: &str = "\
+Claude Code Stop hook: push a finished session's final message to Slack.
+
+Reads the hook payload (JSON with session_id + transcript_path) on stdin, so it
+takes no arguments. Wire it into ~/.claude/settings.json under hooks.Stop.
+
+Opt-in: does nothing unless CLAUDE_SLACK_NOTIFY is truthy (1/true/yes/on). When
+opted in, diagnostics are written to stderr (tune with RUST_LOG). Needs
+SLACK_BOT_TOKEN and a target channel (SLACK_NOTIFY_CHANNEL); SLACK_APP_TOKEN is
+not required. Always exits 0 so a failure never breaks the Claude session.";
+
 fn main() {
+    slack_claude_bridge::cli::handle_help_version("slack-claude-stop-hook", USAGE);
+
+    let notify = notify_enabled();
+
+    // Only when opted in do we surface diagnostics: this hook fires for *every*
+    // Claude session, so ordinary (non-notify) runs must stay completely silent.
+    // Warnings go to stderr so they never pollute the hook's stdout.
+    if notify {
+        let _ = tracing_subscriber::fmt()
+            .with_writer(std::io::stderr)
+            .with_env_filter(
+                tracing_subscriber::EnvFilter::try_from_default_env()
+                    .unwrap_or_else(|_| "warn".into()),
+            )
+            .try_init();
+    }
+
     // Swallow everything and always exit 0.
-    if let Err(e) = run() {
+    if let Err(e) = run(notify) {
         warn!("stop hook failed (ignored): {e}");
     }
 }
 
-fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+fn notify_enabled() -> bool {
     let flag = std::env::var("CLAUDE_SLACK_NOTIFY")
         .unwrap_or_default()
         .trim()
         .to_lowercase();
-    if !TRUTHY.contains(&flag.as_str()) {
+    TRUTHY.contains(&flag.as_str())
+}
+
+fn run(notify: bool) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    if !notify {
         return Ok(()); // opt-in only — stay quiet for ordinary sessions
     }
 
     let mut payload = String::new();
     std::io::stdin().read_to_string(&mut payload)?;
 
-    let config =
-        Config::load().map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.into() })?;
+    // The hook posts with the bot token alone, so it does not require
+    // SLACK_APP_TOKEN (unlike the Socket Mode bridge).
+    let config = Config::load_for_hook()
+        .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.into() })?;
 
     let channel = std::env::var("SLACK_NOTIFY_CHANNEL")
         .ok()

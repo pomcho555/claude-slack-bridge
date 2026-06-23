@@ -16,6 +16,7 @@
 
 pub mod app;
 pub mod claude_runner;
+pub mod cli;
 pub mod config;
 pub mod notify;
 pub mod slack;

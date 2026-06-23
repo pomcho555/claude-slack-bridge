@@ -14,6 +14,13 @@ use slack_claude_bridge::slack::{build_client, RealSlack};
 use slack_claude_bridge::store::SessionStore;
 
 fn main() {
+    slack_claude_bridge::cli::handle_help_version(
+        "slack-claude-job",
+        "Run a Claude job locally, then push its result to Slack and seed the thread.\n\n\
+         Usage: slack-claude-job [--channel C0123] [--workdir DIR] [--title T] <prompt...>\n\n\
+         The target channel defaults to SLACK_NOTIFY_CHANNEL when --channel is omitted.",
+    );
+
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
