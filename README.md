@@ -37,7 +37,36 @@ iPhone (Slack) ──Socket Mode──► bridge (this app, on your home server)
 One Slack thread = one Claude session. No public URL needed (Socket Mode uses an
 outbound connection), so it runs fine from a home server.
 
-Implemented in Rust (Socket Mode via [`slack-morphism`](https://crates.io/crates/slack-morphism)).
+## Why this
+
+- **Drive Claude Code from your phone** — start, monitor, and continue long jobs from Slack while you're AFK.
+- **Threads are sessions** — replying in a thread resumes the same Claude session (`--resume`) with full context.
+- **No public URL** — Socket Mode dials out, so it runs safely from a home server behind NAT.
+- **Single static binary** — one `cargo install`, no runtime, no daemon manager; pure Rust on tokio.
+- **Allow-list gated** — only `ALLOWED_USERS` can trigger jobs on your host, with a configurable permission mode.
+- **Notify *any* terminal job** — a Stop hook pings Slack when an ordinary local `claude` run finishes.
+- **Hardened CI** — fmt/clippy/audit plus cargo-deny, Trivy, Syft (SBOM), and TruffleHog on every change.
+
+## Install
+
+```sh
+cargo install slack-claude-bridge
+```
+
+This installs four binaries on your `PATH`:
+
+| Binary | What it does |
+| --- | --- |
+| `slack-claude-bridge` | the bridge — listens on Slack and runs jobs (main entry point) |
+| `slack-claude-job` | run a local job and push its result to Slack |
+| `slack-claude-notify` | push text into a Slack thread for an existing session |
+| `slack-claude-stop-hook` | Claude Code Stop hook → auto-notify any session |
+
+**Prerequisites:** the [`claude`](https://docs.claude.com/en/docs/claude-code)
+CLI on your `PATH`, and a Rust toolchain to run `cargo install` (see
+[rustup.rs](https://rustup.rs)).
+
+Prefer to build from source? See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Setup
 
@@ -81,10 +110,15 @@ Then:
 
 ### 2. Configure
 
+Create a working directory for the bridge and add a `.env` there
+([`.env.example`](.env.example) lists every option):
+
 ```bash
-cp .env.example .env
-# edit .env: paste the two tokens, set ALLOWED_USERS to your Slack user ID,
-# and point CLAUDE_WORKDIR at the repo you want Claude to work in.
+# .env
+SLACK_BOT_TOKEN=xoxb-…          # from "Install App"
+SLACK_APP_TOKEN=xapp-…          # the connections:write app-level token
+ALLOWED_USERS=U0123ABCD         # your Slack user ID(s), comma-separated
+CLAUDE_WORKDIR=/path/to/repo    # the repo you want Claude to work in
 ```
 
 `.env` is loaded automatically from the working directory (real env vars win).
@@ -92,11 +126,12 @@ cp .env.example .env
 > ⚠️ Anyone allowed to trigger the bot can run Claude Code on your machine with
 > the configured permission mode. Set `ALLOWED_USERS`.
 
-### 3. Build & run
+### 3. Run
+
+From that directory:
 
 ```bash
-cargo build --release
-cargo run --release            # runs the bridge (default binary)
+slack-claude-bridge
 ```
 
 Leave it running on your home server while jobs execute.
@@ -136,7 +171,7 @@ SLACK_NOTIFY_CHANNEL=C0123ABCD     # or pass --channel per call
 ### `slack-claude-job` — run a job and push its result
 
 ```bash
-cargo run --release --bin slack-claude-job -- "refactor the auth module and run the tests"
+slack-claude-job "refactor the auth module and run the tests"
 ```
 
 Runs the prompt headless (same runner the bridge uses) and, when done, posts the
@@ -145,7 +180,7 @@ result to Slack and seeds the thread. Options: `--channel`, `--workdir`, `--titl
 ### `slack-claude-notify` — push text for an existing session
 
 ```bash
-echo "done — all green" | cargo run --release --bin slack-claude-notify -- --session <session-id>
+echo "done — all green" | slack-claude-notify --session <session-id>
 ```
 
 Text comes from `--text`, `--file`, or stdin.
@@ -158,8 +193,7 @@ id + transcript from the hook payload, extracts this turn's final message
 (polling past the transcript-flush race), and pushes it to Slack.
 
 It is **opt-in**: it does nothing unless `CLAUDE_SLACK_NOTIFY` is truthy, so
-ordinary interactive sessions stay quiet. After `cargo build --release`, add to
-`~/.claude/settings.json`:
+ordinary interactive sessions stay quiet. Add to `~/.claude/settings.json`:
 
 ```json
 {
@@ -169,7 +203,7 @@ ordinary interactive sessions stay quiet. After `cargo build --release`, add to
         "hooks": [
           {
             "type": "command",
-            "command": "cd /path/to/slack-test && ./target/release/slack-claude-stop-hook"
+            "command": "cd /path/to/bridge-dir && slack-claude-stop-hook"
           }
         ]
       }
@@ -207,51 +241,6 @@ this across processes. Repeated Stop-hook pushes for the *same* session are
 collapsed into the one existing thread, but a real fork (terminal + Slack both
 active) is still a fork.
 
-## How it works
-
-The core is transport-agnostic — it writes through the `Poster` / `SlackClient`
-seams — which is what makes it testable without a live Slack.
-
-- **`config.rs`** — loads config from the environment (`.env` via `dotenvy`).
-- **`store.rs`** — SQLite map of `thread_ts → session_id` (plus a reverse lookup)
-  so a thread survives restarts and reconnects to its Claude session.
-- **`claude_runner.rs`** — invokes `claude --print --output-format json` (adds
-  `--resume <id>` to continue), parses the session id and result; enforces a
-  subprocess timeout.
-- **`app.rs`** — the inbound core: `handle_mention` / `handle_message` routing,
-  `post_result`, and `ThreadWorkers` (one OS thread per Slack thread, so a reply
-  mid-job queues behind it instead of resuming concurrently).
-- **`notify.rs`** — `push_result`: posts a result and seeds `thread_ts →
-  session_id`; reuses the existing thread for a session via `find_by_session`.
-- **`stop_hook.rs`** — transcript parsing + the Stop-hook orchestration.
-- **`slack.rs`** — `RealSlack`: the slack-morphism-backed implementation of the
-  `Poster` and `SlackClient` seams.
-- **`bin/`** — the four binaries (`slack-claude-bridge`, `-job`, `-notify`,
-  `-stop-hook`) plus the `fake_claude` test fixture.
-
-slack-morphism runs the async (tokio) Socket Mode receive loop; each event is
-dispatched to the synchronous core on a plain OS thread (off the runtime), so the
-blocking `claude` subprocess and outbound Slack calls never block a tokio worker.
-
-## Testing
-
-```bash
-cargo test
-```
-
-The suite is **end-to-end against the real seams** — a real `ClaudeRunner`
-subprocess (driven by the `fake_claude` test bin, a stand-in for the `claude`
-CLI) and the real SQLite store — with only Slack faked. It is driven by
-[`spec/scenarios.json`](spec/scenarios.json), a declarative behavioral contract
-run by [`tests/spec.rs`](tests/spec.rs); native tests cover the language-specific
-paths the spec excludes (runner timeout / missing-binary / non-JSON in
-[`tests/runner.rs`](tests/runner.rs), the transcript-flush race in
-[`tests/stop_hook_timing.rs`](tests/stop_hook_timing.rs)).
-
-CI also gates on `cargo fmt --check`, `cargo clippy -D warnings`, and
-`cargo audit`; a separate [security workflow](.github/workflows/security.yml)
-runs cargo-deny, Trivy (SCA), Syft (SBOM), and TruffleHog.
-
 ## Notes & limitations
 
 - Per-thread worker threads are kept for the process lifetime — fine for personal
@@ -259,3 +248,12 @@ runs cargo-deny, Trivy (SCA), Syft (SBOM), and TruffleHog.
 - Set `CLAUDE_PERMISSION_MODE=bypassPermissions` only if you fully trust the
   allowed users — it lets Claude run tools without prompting.
 - `CLAUDE_TIMEOUT` (default 4h) kills runaway jobs.
+
+## Contributing
+
+Bug reports, architecture notes, and the development/test workflow live in
+[CONTRIBUTING.md](CONTRIBUTING.md).
+
+## License
+
+[MIT](LICENSE).
