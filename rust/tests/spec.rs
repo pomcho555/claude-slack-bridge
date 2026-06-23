@@ -11,6 +11,7 @@ use std::cell::RefCell;
 use std::collections::HashSet;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 use serde_json::{json, Value};
 
@@ -50,26 +51,32 @@ fn panic_msg(e: Box<dyn std::any::Any + Send>) -> String {
 
 // --- shared fakes ----------------------------------------------------------
 
-#[derive(Default)]
+type RecordedPosts = Arc<Mutex<Vec<(String, Option<String>, String)>>>;
+type RecordedUploads = Arc<Mutex<Vec<(String, String)>>>; // (filename, content)
+
+// Clone-able + Send so it satisfies the handlers' `Poster + Clone + Send`
+// bound; clones share the same recorded posts/uploads via Arc.
+#[derive(Default, Clone)]
 struct FakePoster {
-    posts: RefCell<Vec<(String, Option<String>, String)>>,
-    uploads: RefCell<Vec<(String, String)>>, // (filename, content)
+    posts: RecordedPosts,
+    uploads: RecordedUploads,
 }
 
 impl Poster for FakePoster {
     fn post(&self, channel: &str, thread_ts: Option<&str>, text: &str) {
         self.posts
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .push((channel.to_string(), thread_ts.map(String::from), text.to_string()));
     }
     fn upload(&self, _channel: &str, _thread_ts: Option<&str>, filename: &str, _title: &str, content: &str) {
-        self.uploads.borrow_mut().push((filename.to_string(), content.to_string()));
+        self.uploads.lock().unwrap().push((filename.to_string(), content.to_string()));
     }
 }
 
 struct InlineWorkers;
 impl Workers for InlineWorkers {
-    fn submit<'a>(&self, _key: &str, job: Box<dyn FnOnce() + 'a>) {
+    fn submit(&self, _key: &str, job: Box<dyn FnOnce() + Send + 'static>) {
         job();
     }
 }
@@ -227,8 +234,8 @@ fn run_inbound(sc: &Value) {
     }
 
     let expect = &sc["expect"];
-    assert_posts(&poster.posts.borrow(), expect);
-    assert_uploads(&poster.uploads.borrow(), expect);
+    assert_posts(&poster.posts.lock().unwrap(), expect);
+    assert_uploads(&poster.uploads.lock().unwrap(), expect);
 
     if expect.get("no_claude").and_then(|v| v.as_bool()).unwrap_or(false) {
         let empty = !log.exists()

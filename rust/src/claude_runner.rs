@@ -21,6 +21,7 @@ pub struct ClaudeResult {
     pub is_error: bool,
 }
 
+#[derive(Clone)]
 pub struct ClaudeRunner {
     pub binary: String,
     pub workdir: String,

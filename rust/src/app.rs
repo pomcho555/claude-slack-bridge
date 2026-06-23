@@ -2,6 +2,11 @@
 //! (mirror of `app.py`). Slack Bolt wiring lives in the binary; this module is
 //! the testable core the spec harness drives directly.
 
+use std::collections::HashMap;
+use std::sync::mpsc::{channel, Sender};
+use std::sync::Mutex;
+use std::thread;
+
 use crate::claude_runner::{ClaudeResult, ClaudeRunner};
 use crate::config::Config;
 use crate::store::SessionStore;
@@ -29,11 +34,49 @@ pub trait Poster {
     fn upload(&self, channel: &str, thread_ts: Option<&str>, filename: &str, title: &str, content: &str);
 }
 
+/// A unit of background work handed to [`Workers`].
+pub type Job = Box<dyn FnOnce() + Send + 'static>;
+
 /// One sequential worker per Slack thread: a reply that arrives mid-job queues
 /// behind it instead of resuming the session concurrently. Different threads
-/// run in parallel.
+/// run in parallel. Jobs must be `Send + 'static` because the real
+/// implementation moves them onto a dedicated OS thread.
 pub trait Workers {
-    fn submit<'a>(&self, key: &str, job: Box<dyn FnOnce() + 'a>);
+    fn submit(&self, key: &str, job: Job);
+}
+
+/// Real `Workers`: one long-lived OS thread per Slack thread key, fed by a
+/// channel, so jobs for a given thread run strictly in order while different
+/// threads run concurrently. Threads live for the process lifetime (fine for
+/// personal use; for many threads you'd reap idle ones).
+#[derive(Default)]
+pub struct ThreadWorkers {
+    senders: Mutex<HashMap<String, Sender<Job>>>,
+}
+
+impl ThreadWorkers {
+    pub fn new() -> ThreadWorkers {
+        ThreadWorkers { senders: Mutex::new(HashMap::new()) }
+    }
+}
+
+impl Workers for ThreadWorkers {
+    fn submit(&self, key: &str, job: Job) {
+        let mut senders = self.senders.lock().unwrap();
+        let tx = senders.entry(key.to_string()).or_insert_with(|| {
+            let (tx, rx) = channel::<Job>();
+            thread::Builder::new()
+                .name(format!("claude-{key}"))
+                .spawn(move || {
+                    for job in rx {
+                        job();
+                    }
+                })
+                .expect("spawn worker thread");
+            tx
+        });
+        let _ = tx.send(job);
+    }
 }
 
 /// Strip `<@U123>`-style mentions and surrounding whitespace.
@@ -129,7 +172,7 @@ pub fn run_reply<P: Poster>(
 
 /// Handle an `app_mention`: anchor the thread, start a new job or continue the
 /// tracked session, posting the appropriate ack.
-pub fn handle_mention<P: Poster, W: Workers>(
+pub fn handle_mention<P, W>(
     event: &Event,
     poster: &P,
     config: &Config,
@@ -137,7 +180,10 @@ pub fn handle_mention<P: Poster, W: Workers>(
     runner: &ClaudeRunner,
     workers: &W,
     bot_user_id: &str,
-) {
+) where
+    P: Poster + Clone + Send + 'static,
+    W: Workers,
+{
     if !is_allowed(config, event.user.as_deref()) {
         return;
     }
@@ -159,13 +205,15 @@ pub fn handle_mention<P: Poster, W: Workers>(
         return;
     }
 
-    // A mention inside an already-tracked thread = continue that session.
+    // A mention inside an already-tracked thread = continue that session. Clone
+    // cheap handles into the job so it can outlive this call on a worker thread.
     if store.exists(&thread_ts) {
         poster.post(&channel, Some(&thread_ts), "💬 Continuing this session…");
+        let (po, st, ru) = (poster.clone(), store.clone(), runner.clone());
         let (c, t, p) = (channel.clone(), thread_ts.clone(), prompt);
         workers.submit(
             &thread_ts,
-            Box::new(move || run_reply(poster, store, runner, &c, &t, &p)),
+            Box::new(move || run_reply(&po, &st, &ru, &c, &t, &p)),
         );
     } else {
         poster.post(
@@ -173,17 +221,18 @@ pub fn handle_mention<P: Poster, W: Workers>(
             Some(&thread_ts),
             "🛠 Started — I'll reply in this thread when done. Reply here anytime to continue.",
         );
+        let (po, st, ru) = (poster.clone(), store.clone(), runner.clone());
         let (c, t, p) = (channel.clone(), thread_ts.clone(), prompt);
         workers.submit(
             &thread_ts,
-            Box::new(move || run_new_job(poster, store, runner, &c, &t, &p)),
+            Box::new(move || run_new_job(&po, &st, &ru, &c, &t, &p)),
         );
     }
 }
 
 /// Handle a plain `message`: continue a tracked thread, ignoring chatter, bot
 /// posts, top-level messages and untracked threads.
-pub fn handle_message<P: Poster, W: Workers>(
+pub fn handle_message<P, W>(
     event: &Event,
     poster: &P,
     config: &Config,
@@ -191,7 +240,10 @@ pub fn handle_message<P: Poster, W: Workers>(
     runner: &ClaudeRunner,
     workers: &W,
     bot_user_id: &str,
-) {
+) where
+    P: Poster + Clone + Send + 'static,
+    W: Workers,
+{
     // Only plain human messages: skip edits/deletes/joins and bot posts.
     if event.subtype.is_some() || event.bot_id.is_some() {
         return;
@@ -228,9 +280,10 @@ pub fn handle_message<P: Poster, W: Workers>(
         Some(c) => c,
         None => return,
     };
+    let (po, st, ru) = (poster.clone(), store.clone(), runner.clone());
     let (c, t, p) = (channel, thread_ts.clone(), prompt);
     workers.submit(
         &thread_ts,
-        Box::new(move || run_reply(poster, store, runner, &c, &t, &p)),
+        Box::new(move || run_reply(&po, &st, &ru, &c, &t, &p)),
     );
 }

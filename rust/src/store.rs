@@ -3,7 +3,7 @@
 //! One Slack thread corresponds to one Claude session, so a human reply in the
 //! thread continues the same conversation via `--resume`.
 
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusqlite::{params, Connection, OptionalExtension};
@@ -17,8 +17,11 @@ pub struct ThreadRow {
     pub updated_at: f64,
 }
 
+/// Cloning shares the same underlying connection (cheap `Arc` bump), so the
+/// store can be handed to per-thread workers.
+#[derive(Clone)]
 pub struct SessionStore {
-    conn: Mutex<Connection>,
+    conn: Arc<Mutex<Connection>>,
 }
 
 fn now() -> f64 {
@@ -52,7 +55,7 @@ impl SessionStore {
             [],
         )
         .expect("create table");
-        SessionStore { conn: Mutex::new(conn) }
+        SessionStore { conn: Arc::new(Mutex::new(conn)) }
     }
 
     pub fn get(&self, thread_ts: &str) -> Option<ThreadRow> {

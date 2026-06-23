@@ -235,8 +235,9 @@ the same scenarios and diff the Slack output.
 
 A Rust rewrite lives in [`rust/`](rust/) and is validated against the *same*
 `spec/scenarios.json` (it reuses `tests/fake_claude.py` verbatim). The core is
-fully ported and spec-green (`cd rust && cargo test`); only the Slack Socket
-Mode transport (`main`) is outstanding. See [`rust/README.md`](rust/README.md).
+fully ported and spec-green (`cd rust && cargo test`), and the Slack Socket Mode
+transport is wired with [`slack-morphism`](https://crates.io/crates/slack-morphism)
+(`cargo run --release`). See [`rust/README.md`](rust/README.md).
 
 ## Notes & limitations
 
