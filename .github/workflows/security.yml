@@ -48,10 +48,15 @@ jobs:
         with:
           sarif_file: trivy.sarif
 
-  # NOTE: actions/dependency-review-action is intentionally omitted — it still
-  # errors with "Dependency graph is not enabled" on this repo, and cargo-deny +
-  # cargo-audit already gate dependency vulnerabilities. Re-add it if the
-  # Dependency Graph is enabled in repo settings.
+  # PR-time dependency review (Dependency Graph enabled in repo settings).
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
 
   # Rust dependency vuln/license/source gate (the failing CI gate; Dependabot
   # alone only notifies, it does not block).
