@@ -3,6 +3,19 @@
 [![e2e](https://github.com/pomcho555/claude-slack-bridge/actions/workflows/e2e.yml/badge.svg)](https://github.com/pomcho555/claude-slack-bridge/actions/workflows/e2e.yml)
 [![security](https://github.com/pomcho555/claude-slack-bridge/actions/workflows/security.yml/badge.svg)](https://github.com/pomcho555/claude-slack-bridge/actions/workflows/security.yml)
 
+> ## ⚠️ USE AT YOUR OWN RISK
+>
+> **This software is provided "AS IS", without warranty of any kind. The
+> author(s) accept NO LIABILITY and take NO RESPONSIBILITY WHATSOEVER for any
+> damage, data loss, security breach, unauthorized access, financial cost, or
+> any other consequence arising from its use.**
+>
+> This tool runs Claude Code with tool access on your machine and handles live
+> Slack tokens — **anyone allowed to trigger the bot can execute code on your
+> host.** Securing your deployment (tokens, `ALLOWED_USERS`, permission mode,
+> network exposure) is **entirely your own responsibility.** You assume all
+> risk by using it.
+
 Run long Claude Code jobs from Slack and reply to them from your phone.
 
 A mention starts a job; the bot runs `claude` headless on your machine and posts
