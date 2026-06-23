@@ -106,6 +106,14 @@ async fn on_push_event(
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    slack_claude_bridge::cli::handle_help_version(
+        "slack-claude-bridge",
+        "Run the Slack <-> Claude Code bridge over Socket Mode.\n\n\
+         Usage: slack-claude-bridge   (takes no arguments)\n\n\
+         Configured from the environment / .env: SLACK_BOT_TOKEN, SLACK_APP_TOKEN,\n\
+         ALLOWED_USERS, CLAUDE_WORKDIR, CLAUDE_PERMISSION_MODE, and more (see README).",
+    );
+
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),

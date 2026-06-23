@@ -218,8 +218,18 @@ Then run the jobs you care about with the flag set:
 CLAUDE_SLACK_NOTIFY=1 claude -p "run the full migration and verify"
 ```
 
-The hook always exits 0 — a failure there never breaks your Claude session. It
-must run from the bridge directory (so it loads the same `.env` and `bridge.db`).
+The hook always exits 0 — a failure there never breaks your Claude session, so
+when opted in (`CLAUDE_SLACK_NOTIFY` set) it logs any failure to **stderr** (tune
+with `RUST_LOG`) instead of dying silently. It needs only `SLACK_BOT_TOKEN` and a
+target channel — `SLACK_APP_TOKEN` is **not** required for the hook (that's only
+for the Socket Mode bridge), so an env-var-only setup works:
+
+```bash
+SLACK_BOT_TOKEN=xoxb-… SLACK_NOTIFY_CHANNEL=C0123 CLAUDE_SLACK_NOTIFY=1 claude
+```
+
+Otherwise run it from the bridge directory so it loads the same `.env` and
+`bridge.db`. All four binaries accept `--help` and `--version`.
 
 ## Handoff model — read this
 

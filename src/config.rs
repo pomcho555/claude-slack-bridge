@@ -33,10 +33,29 @@ fn opt(name: &str) -> Option<String> {
 }
 
 impl Config {
+    /// Full configuration for the bridge: requires both Slack tokens.
     pub fn load() -> Result<Config, String> {
+        Self::load_with(true)
+    }
+
+    /// Configuration for the Stop hook, which posts with the bot token alone and
+    /// never opens a Socket Mode connection. `SLACK_APP_TOKEN` is therefore
+    /// *not* required, so an env-var-only (`.env`-less) hook setup doesn't have
+    /// to set a token it never uses.
+    pub fn load_for_hook() -> Result<Config, String> {
+        Self::load_with(false)
+    }
+
+    fn load_with(require_app_token: bool) -> Result<Config, String> {
         // Load .env from the current dir (mirrors python-dotenv in config.py).
         // Missing file is fine; real env vars still win.
         let _ = dotenvy::dotenv();
+
+        let app_token = if require_app_token {
+            require("SLACK_APP_TOKEN")?
+        } else {
+            opt("SLACK_APP_TOKEN").unwrap_or_default()
+        };
 
         let allowed_users = env::var("ALLOWED_USERS")
             .unwrap_or_default()
@@ -56,7 +75,7 @@ impl Config {
 
         Ok(Config {
             bot_token: require("SLACK_BOT_TOKEN")?,
-            app_token: require("SLACK_APP_TOKEN")?,
+            app_token,
             claude_bin: opt("CLAUDE_BIN").unwrap_or_else(|| "claude".to_string()),
             workdir: opt("CLAUDE_WORKDIR").unwrap_or_else(|| {
                 env::current_dir()
