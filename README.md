@@ -6,6 +6,7 @@
 
 [![e2e](https://github.com/pomcho555/claude-slack-bridge/actions/workflows/e2e.yml/badge.svg)](https://github.com/pomcho555/claude-slack-bridge/actions/workflows/e2e.yml)
 [![security](https://github.com/pomcho555/claude-slack-bridge/actions/workflows/security.yml/badge.svg)](https://github.com/pomcho555/claude-slack-bridge/actions/workflows/security.yml)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/pomcho555/claude-slack-bridge/badge)](https://securityscorecards.dev/viewer/?uri=github.com/pomcho555/claude-slack-bridge)
 
 > ## ⚠️ USE AT YOUR OWN RISK
 >
