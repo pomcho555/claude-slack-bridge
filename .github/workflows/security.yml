@@ -26,11 +26,8 @@ jobs:
         with:
           extra_args: --results=verified,unknown
 
-  # SCA over the whole repo (filesystem). Fails the job on HIGH/CRITICAL.
-  # NOTE: SARIF -> GitHub code scanning needs GitHub Advanced Security, which a
-  # private repo doesn't have by default, so this gates directly on exit code
-  # instead of uploading SARIF. Switch to format:sarif + upload-sarif if GHAS is
-  # enabled.
+  # SCA over the whole repo (filesystem): fails the job on HIGH/CRITICAL and
+  # uploads SARIF to GitHub code scanning (free on public repos).
   sca:
     runs-on: ubuntu-latest
     steps:
@@ -42,12 +39,25 @@ jobs:
           scanners: vuln
           severity: CRITICAL,HIGH
           ignore-unfixed: true
+          format: sarif
+          output: trivy.sarif
           exit-code: "1"
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy.sarif
 
-  # NOTE: GitHub's dependency-review-action is intentionally omitted — it
-  # requires GitHub Advanced Security (Dependency Graph), which a private repo
-  # doesn't have, so it errors on PRs. The cargo-deny + cargo-audit (e2e) gates
-  # cover dependency vulnerabilities instead.
+  # PR-time dependency review with a severity gate (Dependency Graph is free on
+  # public repos).
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
 
   # Rust dependency vuln/license/source gate (the failing CI gate; Dependabot
   # alone only notifies, it does not block).
