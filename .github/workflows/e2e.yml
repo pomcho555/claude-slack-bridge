@@ -7,45 +7,37 @@ on:
     branches: [main]
 
 jobs:
-  python:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-
-      - name: Set up Python
-        run: uv python install 3.12
-
-      - name: Sync dependencies
-        run: uv sync --group dev
-
-      - name: Run E2E suite
-        run: uv run pytest
-
   rust:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: rust
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          components: clippy
+          components: clippy, rustfmt
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: rust
 
-      # The Rust spec harness runs the SAME spec/scenarios.json + fake_claude.py
-      # the Python suite does (it spawns python3 as the fake claude CLI).
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
       - name: Lint (clippy as a gate)
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --all-targets --all-features -- -D warnings
 
-      - name: Run spec + native tests
-        run: cargo test
+      - name: Build
+        run: cargo build --verbose
+
+      # The spec harness runs spec/scenarios.json through the same seams the
+      # bridge uses, spawning the fake_claude test bin as the `claude` CLI.
+      - name: Run tests
+        run: cargo test --verbose
+
+      - name: Security audit
+        run: |
+          cargo install cargo-audit --locked
+          cargo audit
+
+      - name: Build release
+        run: cargo build --release --verbose

@@ -23,7 +23,7 @@ use slack_claude_bridge::stop_hook;
 use slack_claude_bridge::store::SessionStore;
 
 fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().to_path_buf()
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
 fn spec() -> Value {
@@ -64,13 +64,24 @@ struct FakePoster {
 
 impl Poster for FakePoster {
     fn post(&self, channel: &str, thread_ts: Option<&str>, text: &str) {
-        self.posts
+        self.posts.lock().unwrap().push((
+            channel.to_string(),
+            thread_ts.map(String::from),
+            text.to_string(),
+        ));
+    }
+    fn upload(
+        &self,
+        _channel: &str,
+        _thread_ts: Option<&str>,
+        filename: &str,
+        _title: &str,
+        content: &str,
+    ) {
+        self.uploads
             .lock()
             .unwrap()
-            .push((channel.to_string(), thread_ts.map(String::from), text.to_string()));
-    }
-    fn upload(&self, _channel: &str, _thread_ts: Option<&str>, filename: &str, _title: &str, content: &str) {
-        self.uploads.lock().unwrap().push((filename.to_string(), content.to_string()));
+            .push((filename.to_string(), content.to_string()));
     }
 }
 
@@ -89,13 +100,28 @@ struct FakeSlack {
 
 impl SlackClient for FakeSlack {
     fn chat_post_message(&self, channel: &str, thread_ts: Option<&str>, text: &str) -> String {
-        self.posts
-            .borrow_mut()
-            .push((channel.to_string(), thread_ts.map(String::from), text.to_string()));
-        if thread_ts.is_some() { "child.0".to_string() } else { "root.0".to_string() }
+        self.posts.borrow_mut().push((
+            channel.to_string(),
+            thread_ts.map(String::from),
+            text.to_string(),
+        ));
+        if thread_ts.is_some() {
+            "child.0".to_string()
+        } else {
+            "root.0".to_string()
+        }
     }
-    fn files_upload_v2(&self, _c: &str, _t: Option<&str>, filename: &str, _title: &str, content: &str) {
-        self.uploads.borrow_mut().push((filename.to_string(), content.to_string()));
+    fn files_upload_v2(
+        &self,
+        _c: &str,
+        _t: Option<&str>,
+        filename: &str,
+        _title: &str,
+        content: &str,
+    ) {
+        self.uploads
+            .borrow_mut()
+            .push((filename.to_string(), content.to_string()));
     }
 }
 
@@ -108,7 +134,10 @@ fn match_post(actual: &(String, Option<String>, String), expected: &Value) {
     }
     if let Some(exp) = expected.get("thread_ts") {
         if exp.is_null() {
-            assert!(thread_ts.is_none(), "thread_ts expected null, got {thread_ts:?}");
+            assert!(
+                thread_ts.is_none(),
+                "thread_ts expected null, got {thread_ts:?}"
+            );
         } else {
             assert_eq!(thread_ts.as_deref(), exp.as_str(), "thread_ts mismatch");
         }
@@ -123,7 +152,13 @@ fn match_post(actual: &(String, Option<String>, String), expected: &Value) {
 
 fn assert_posts(posts: &[(String, Option<String>, String)], expect: &Value) {
     if let Some(exp) = expect.get("posts").and_then(|v| v.as_array()) {
-        assert_eq!(posts.len(), exp.len(), "expected {} posts, got {}: {posts:?}", exp.len(), posts.len());
+        assert_eq!(
+            posts.len(),
+            exp.len(),
+            "expected {} posts, got {}: {posts:?}",
+            exp.len(),
+            posts.len()
+        );
         for (actual, expected) in posts.iter().zip(exp) {
             match_post(actual, expected);
         }
@@ -131,14 +166,25 @@ fn assert_posts(posts: &[(String, Option<String>, String)], expect: &Value) {
     if let Some(any) = expect.get("post_any_contains").and_then(|v| v.as_array()) {
         for needle in any {
             let n = needle.as_str().unwrap();
-            assert!(posts.iter().any(|(_, _, t)| t.contains(n)), "no post contains {n:?}: {posts:?}");
+            assert!(
+                posts.iter().any(|(_, _, t)| t.contains(n)),
+                "no post contains {n:?}: {posts:?}"
+            );
         }
     }
 }
 
 fn assert_uploads(uploads: &[(String, String)], expect: &Value) {
-    let Some(exp) = expect.get("uploads").and_then(|v| v.as_array()) else { return };
-    assert_eq!(uploads.len(), exp.len(), "expected {} uploads, got {}", exp.len(), uploads.len());
+    let Some(exp) = expect.get("uploads").and_then(|v| v.as_array()) else {
+        return;
+    };
+    assert_eq!(
+        uploads.len(),
+        exp.len(),
+        "expected {} uploads, got {}",
+        exp.len(),
+        uploads.len()
+    );
     for ((filename, content), expected) in uploads.iter().zip(exp) {
         if let Some(f) = expected.get("filename").and_then(|v| v.as_str()) {
             assert_eq!(filename, f, "upload filename mismatch");
@@ -178,10 +224,18 @@ fn run_inbound(sc: &Value) {
     let result = if let Some(n) = claude.get("result_len").and_then(|v| v.as_u64()) {
         "X".repeat(n as usize)
     } else {
-        claude.get("result").and_then(|v| v.as_str()).unwrap_or("ok").to_string()
+        claude
+            .get("result")
+            .and_then(|v| v.as_str())
+            .unwrap_or("ok")
+            .to_string()
     };
     std::env::set_var("FAKE_CLAUDE_RESULT", &result);
-    if claude.get("error").and_then(|v| v.as_bool()).unwrap_or(false) {
+    if claude
+        .get("error")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
         std::env::set_var("FAKE_CLAUDE_ERROR", "1");
     } else {
         std::env::remove_var("FAKE_CLAUDE_ERROR");
@@ -190,14 +244,25 @@ fn run_inbound(sc: &Value) {
     let store = SessionStore::new(dir.join("bridge.db").to_str().unwrap());
     if let Some(seed) = sc.get("seed").and_then(|v| v.as_array()) {
         for s in seed {
-            store.start(s["thread_ts"].as_str().unwrap(), s["channel"].as_str().unwrap());
-            store.finish(s["thread_ts"].as_str().unwrap(), s["session_id"].as_str(), "done");
+            store.start(
+                s["thread_ts"].as_str().unwrap(),
+                s["channel"].as_str().unwrap(),
+            );
+            store.finish(
+                s["thread_ts"].as_str().unwrap(),
+                s["session_id"].as_str(),
+                "done",
+            );
         }
     }
 
     let allowed: HashSet<String> = sc["config"]["allowed_users"]
         .as_array()
-        .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
         .unwrap_or_default();
     let config = Config {
         bot_token: "x".into(),
@@ -212,9 +277,8 @@ fn run_inbound(sc: &Value) {
         allowed_users: allowed,
         notify_channel: None,
     };
-    let fake_claude = repo_root().join("tests").join("fake_claude.py");
     let runner = ClaudeRunner {
-        binary: fake_claude.to_str().unwrap().into(),
+        binary: env!("CARGO_BIN_EXE_fake_claude").to_string(),
         workdir: dir.to_str().unwrap().into(),
         permission_mode: "acceptEdits".into(),
         model: None,
@@ -237,9 +301,15 @@ fn run_inbound(sc: &Value) {
     assert_posts(&poster.posts.lock().unwrap(), expect);
     assert_uploads(&poster.uploads.lock().unwrap(), expect);
 
-    if expect.get("no_claude").and_then(|v| v.as_bool()).unwrap_or(false) {
+    if expect
+        .get("no_claude")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
         let empty = !log.exists()
-            || std::fs::read_to_string(&log).map(|s| s.trim().is_empty()).unwrap_or(true);
+            || std::fs::read_to_string(&log)
+                .map(|s| s.trim().is_empty())
+                .unwrap_or(true);
         assert!(empty, "claude was invoked but shouldn't be");
     }
 
@@ -255,7 +325,10 @@ fn run_inbound(sc: &Value) {
             let resume = inv.get("resume").unwrap_or(&Value::Null);
             assert_eq!(resume, exp_inv.get("resume").unwrap(), "resume mismatch");
             if let Some(pc) = exp_inv.get("prompt_contains").and_then(|v| v.as_str()) {
-                assert!(inv["prompt"].as_str().unwrap_or("").contains(pc), "prompt mismatch");
+                assert!(
+                    inv["prompt"].as_str().unwrap_or("").contains(pc),
+                    "prompt mismatch"
+                );
             }
         }
     }
@@ -300,8 +373,15 @@ fn run_stop_hook(sc: &Value) {
     let store = SessionStore::new(dir.join("bridge.db").to_str().unwrap());
     if let Some(seed) = sc.get("seed").and_then(|v| v.as_array()) {
         for s in seed {
-            store.start(s["thread_ts"].as_str().unwrap(), s["channel"].as_str().unwrap());
-            store.finish(s["thread_ts"].as_str().unwrap(), s["session_id"].as_str(), "done");
+            store.start(
+                s["thread_ts"].as_str().unwrap(),
+                s["channel"].as_str().unwrap(),
+            );
+            store.finish(
+                s["thread_ts"].as_str().unwrap(),
+                s["session_id"].as_str(),
+                "done",
+            );
         }
     }
 

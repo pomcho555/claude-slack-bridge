@@ -31,7 +31,14 @@ pub struct Event {
 /// makes the flows testable without a live Slack.
 pub trait Poster {
     fn post(&self, channel: &str, thread_ts: Option<&str>, text: &str);
-    fn upload(&self, channel: &str, thread_ts: Option<&str>, filename: &str, title: &str, content: &str);
+    fn upload(
+        &self,
+        channel: &str,
+        thread_ts: Option<&str>,
+        filename: &str,
+        title: &str,
+        content: &str,
+    );
 }
 
 /// A unit of background work handed to [`Workers`].
@@ -56,7 +63,9 @@ pub struct ThreadWorkers {
 
 impl ThreadWorkers {
     pub fn new() -> ThreadWorkers {
-        ThreadWorkers { senders: Mutex::new(HashMap::new()) }
+        ThreadWorkers {
+            senders: Mutex::new(HashMap::new()),
+        }
     }
 }
 
@@ -88,7 +97,9 @@ pub fn strip_mentions(text: &str) -> String {
             if let Some(close) = text[i + 2..].find('>') {
                 let inner = &text[i + 2..i + 2 + close];
                 if !inner.is_empty()
-                    && inner.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+                    && inner
+                        .chars()
+                        .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
                 {
                     i = i + 2 + close + 1;
                     continue;
@@ -110,9 +121,17 @@ pub fn is_allowed(config: &Config, user: Option<&str>) -> bool {
 }
 
 pub fn post_result<P: Poster>(poster: &P, channel: &str, thread_ts: &str, result: &ClaudeResult) {
-    let prefix = if result.is_error { "❌ *Error*\n" } else { "✅ *Done*\n" };
+    let prefix = if result.is_error {
+        "❌ *Error*\n"
+    } else {
+        "✅ *Done*\n"
+    };
     if result.text.chars().count() <= MAX_TEXT {
-        poster.post(channel, Some(thread_ts), &format!("{prefix}{}", result.text));
+        poster.post(
+            channel,
+            Some(thread_ts),
+            &format!("{prefix}{}", result.text),
+        );
         return;
     }
     poster.post(
@@ -120,7 +139,13 @@ pub fn post_result<P: Poster>(poster: &P, channel: &str, thread_ts: &str, result
         Some(thread_ts),
         &format!("{prefix}_Result is long — see the attached file._"),
     );
-    poster.upload(channel, Some(thread_ts), "claude-result.md", "Claude result", &result.text);
+    poster.upload(
+        channel,
+        Some(thread_ts),
+        "claude-result.md",
+        "Claude result",
+        &result.text,
+    );
 }
 
 pub fn run_new_job<P: Poster>(
@@ -150,7 +175,13 @@ pub fn run_reply<P: Poster>(
     prompt: &str,
 ) {
     match store.get(thread_ts) {
-        Some(row) if row.session_id.as_deref().map(|s| !s.is_empty()).unwrap_or(false) => {
+        Some(row)
+            if row
+                .session_id
+                .as_deref()
+                .map(|s| !s.is_empty())
+                .unwrap_or(false) =>
+        {
             let sid = row.session_id.unwrap();
             let result = runner.run_resume(&sid, prompt);
             store.finish(
@@ -201,7 +232,11 @@ pub fn handle_mention<P, W>(
     let prompt = strip_mentions(event.text.as_deref().unwrap_or(""));
 
     if prompt.is_empty() {
-        poster.post(&channel, Some(&thread_ts), "👋 Mention me with a task to run.");
+        poster.post(
+            &channel,
+            Some(&thread_ts),
+            "👋 Mention me with a task to run.",
+        );
         return;
     }
 

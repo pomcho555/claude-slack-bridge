@@ -30,7 +30,12 @@ impl RealSlack {
         RealSlack { client, token, rt }
     }
 
-    fn do_post(&self, channel: &str, thread_ts: Option<&str>, text: &str) -> Result<SlackTs, BoxErr> {
+    fn do_post(
+        &self,
+        channel: &str,
+        thread_ts: Option<&str>,
+        text: &str,
+    ) -> Result<SlackTs, BoxErr> {
         let mut req = SlackApiChatPostMessageRequest::new(
             SlackChannelId(channel.to_string()),
             SlackMessageContent::new().with_text(text.to_string()),
@@ -54,7 +59,8 @@ impl RealSlack {
         content: &str,
     ) -> Result<(), BoxErr> {
         let (client, token) = (self.client.clone(), self.token.clone());
-        let (channel, filename, title) = (channel.to_string(), filename.to_string(), title.to_string());
+        let (channel, filename, title) =
+            (channel.to_string(), filename.to_string(), title.to_string());
         let thread = thread_ts.map(|s| s.to_string());
         let bytes = content.as_bytes().to_vec();
         self.rt.block_on(async move {
@@ -72,10 +78,12 @@ impl RealSlack {
                     "text/markdown".to_string(),
                 ))
                 .await?;
-            let mut complete = SlackApiFilesCompleteUploadExternalRequest::new(vec![
-                SlackApiFilesComplete::new(url.file_id.clone()).with_title(title),
-            ])
-            .with_channel_id(SlackChannelId(channel));
+            let mut complete =
+                SlackApiFilesCompleteUploadExternalRequest::new(vec![SlackApiFilesComplete::new(
+                    url.file_id.clone(),
+                )
+                .with_title(title)])
+                .with_channel_id(SlackChannelId(channel));
             if let Some(t) = thread {
                 complete = complete.with_thread_ts(SlackTs(t));
             }
@@ -91,7 +99,14 @@ impl Poster for RealSlack {
             error!("chat.postMessage failed: {e}");
         }
     }
-    fn upload(&self, channel: &str, thread_ts: Option<&str>, filename: &str, title: &str, content: &str) {
+    fn upload(
+        &self,
+        channel: &str,
+        thread_ts: Option<&str>,
+        filename: &str,
+        title: &str,
+        content: &str,
+    ) {
         if let Err(e) = self.do_upload(channel, thread_ts, filename, title, content) {
             error!("file upload failed: {e}");
         }
@@ -108,7 +123,14 @@ impl PushClient for RealSlack {
             }
         }
     }
-    fn files_upload_v2(&self, channel: &str, thread_ts: Option<&str>, filename: &str, title: &str, content: &str) {
+    fn files_upload_v2(
+        &self,
+        channel: &str,
+        thread_ts: Option<&str>,
+        filename: &str,
+        title: &str,
+        content: &str,
+    ) {
         if let Err(e) = self.do_upload(channel, thread_ts, filename, title, content) {
             error!("file upload failed: {e}");
         }

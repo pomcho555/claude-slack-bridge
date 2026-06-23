@@ -23,10 +23,16 @@ struct FakeSlack {
 
 impl SlackClient for FakeSlack {
     fn chat_post_message(&self, channel: &str, thread_ts: Option<&str>, text: &str) -> String {
-        self.posts
-            .borrow_mut()
-            .push((channel.to_string(), thread_ts.map(String::from), text.to_string()));
-        if thread_ts.is_some() { "child.0".into() } else { "root.0".into() }
+        self.posts.borrow_mut().push((
+            channel.to_string(),
+            thread_ts.map(String::from),
+            text.to_string(),
+        ));
+        if thread_ts.is_some() {
+            "child.0".into()
+        } else {
+            "root.0".into()
+        }
     }
     fn files_upload_v2(&self, _c: &str, _t: Option<&str>, _f: &str, _ti: &str, _ct: &str) {}
 }
@@ -50,7 +56,10 @@ fn waits_for_flush_then_posts() {
     let writer = thread::spawn(move || {
         thread::sleep(Duration::from_millis(400));
         let answer = json!({"type": "assistant", "message": {"content": [{"type": "text", "text": "DELAYED ANSWER"}]}});
-        let mut fh = std::fs::OpenOptions::new().append(true).open(&t_path).unwrap();
+        let mut fh = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&t_path)
+            .unwrap();
         writeln!(fh, "{answer}").unwrap();
     });
 

@@ -67,7 +67,10 @@ impl ClaudeRunner {
             Err(_) => {
                 return ClaudeResult {
                     session_id: resumed(),
-                    text: format!("❌ Claude binary not found: {:?}. Set CLAUDE_BIN.", self.binary),
+                    text: format!(
+                        "❌ Claude binary not found: {:?}. Set CLAUDE_BIN.",
+                        self.binary
+                    ),
                     is_error: true,
                 }
             }
@@ -121,8 +124,16 @@ impl ClaudeRunner {
         let code_nonzero = !status.success();
 
         if stdout.is_empty() {
-            let msg = if !stderr.is_empty() { stderr } else { "Claude produced no output.".to_string() };
-            return ClaudeResult { session_id: resumed(), text: format!("❌ {msg}"), is_error: true };
+            let msg = if !stderr.is_empty() {
+                stderr
+            } else {
+                "Claude produced no output.".to_string()
+            };
+            return ClaudeResult {
+                session_id: resumed(),
+                text: format!("❌ {msg}"),
+                is_error: true,
+            };
         }
 
         match serde_json::from_str::<Value>(&stdout) {
@@ -138,15 +149,26 @@ impl ClaudeRunner {
                     .or_else(|| data.get("error").and_then(|v| v.as_str()))
                     .unwrap_or("")
                     .to_string();
-                let is_error =
-                    data.get("is_error").and_then(|v| v.as_bool()).unwrap_or(false) || code_nonzero;
+                let is_error = data
+                    .get("is_error")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false)
+                    || code_nonzero;
                 if text.is_empty() {
                     text = "(Claude returned no result text)".to_string();
                 }
-                ClaudeResult { session_id, text, is_error }
+                ClaudeResult {
+                    session_id,
+                    text,
+                    is_error,
+                }
             }
             // Not JSON (unexpected) — surface the raw output rather than hide it.
-            Err(_) => ClaudeResult { session_id: resumed(), text: stdout, is_error: code_nonzero },
+            Err(_) => ClaudeResult {
+                session_id: resumed(),
+                text: stdout,
+                is_error: code_nonzero,
+            },
         }
     }
 }

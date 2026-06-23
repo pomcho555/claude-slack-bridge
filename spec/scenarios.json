@@ -1,5 +1,5 @@
 {
-  "_README": "Language-neutral behavioral spec for the Slack<->Claude bridge. See spec/README.md for the schema and how a non-Python port consumes it. The Python reference harness is tests/test_spec.py.",
+  "_README": "Declarative behavioral spec for the Slack<->Claude bridge. See spec/README.md for the schema. The harness is tests/spec.rs.",
 
   "inbound": [
     {

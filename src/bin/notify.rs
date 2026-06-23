@@ -57,10 +57,14 @@ fn main() {
         eprintln!("Configuration error: {e}");
         exit(2);
     });
-    let channel = channel.or_else(|| config.notify_channel.clone()).unwrap_or_else(|| {
-        eprintln!("No target channel. Pass --channel C0123 or set SLACK_NOTIFY_CHANNEL in .env.");
-        exit(2);
-    });
+    let channel = channel
+        .or_else(|| config.notify_channel.clone())
+        .unwrap_or_else(|| {
+            eprintln!(
+                "No target channel. Pass --channel C0123 or set SLACK_NOTIFY_CHANNEL in .env."
+            );
+            exit(2);
+        });
 
     let text = if let Some(t) = text {
         t

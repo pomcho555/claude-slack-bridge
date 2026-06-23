@@ -55,7 +55,9 @@ impl SessionStore {
             [],
         )
         .expect("create table");
-        SessionStore { conn: Arc::new(Mutex::new(conn)) }
+        SessionStore {
+            conn: Arc::new(Mutex::new(conn)),
+        }
     }
 
     pub fn get(&self, thread_ts: &str) -> Option<ThreadRow> {

@@ -106,14 +106,22 @@ pub fn run<C: SlackClient>(
     let session_id = data.get("session_id").and_then(|v| v.as_str());
     let transcript = data.get("transcript_path").and_then(|v| v.as_str());
 
-    let text = transcript
-        .and_then(final_message)
-        .unwrap_or_else(|| "(Claude session finished, but no final message was found.)".to_string());
+    let text = transcript.and_then(final_message).unwrap_or_else(|| {
+        "(Claude session finished, but no final message was found.)".to_string()
+    });
 
     let channel = match channel {
         Some(c) if !c.is_empty() => c,
         _ => return, // no SLACK_NOTIFY_CHANNEL configured; skip the push
     };
 
-    push_result(client, store, channel, session_id, &text, false, Some("✅ *Claude session done*"));
+    push_result(
+        client,
+        store,
+        channel,
+        session_id,
+        &text,
+        false,
+        Some("✅ *Claude session done*"),
+    );
 }

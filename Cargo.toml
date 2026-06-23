@@ -27,6 +27,11 @@ path = "src/bin/notify.rs"
 name = "slack-claude-stop-hook"
 path = "src/bin/stop_hook.rs"
 
+# Test fixture (fake `claude` CLI); located by tests via CARGO_BIN_EXE_fake_claude.
+[[bin]]
+name = "fake_claude"
+path = "src/bin/fake_claude.rs"
+
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

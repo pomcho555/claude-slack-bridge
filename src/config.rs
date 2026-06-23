@@ -26,7 +26,10 @@ fn require(name: &str) -> Result<String, String> {
 }
 
 fn opt(name: &str) -> Option<String> {
-    env::var(name).ok().map(|v| v.trim().to_string()).filter(|v| !v.is_empty())
+    env::var(name)
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
 }
 
 impl Config {
@@ -56,9 +59,12 @@ impl Config {
             app_token: require("SLACK_APP_TOKEN")?,
             claude_bin: opt("CLAUDE_BIN").unwrap_or_else(|| "claude".to_string()),
             workdir: opt("CLAUDE_WORKDIR").unwrap_or_else(|| {
-                env::current_dir().map(|p| p.display().to_string()).unwrap_or_default()
+                env::current_dir()
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_default()
             }),
-            permission_mode: opt("CLAUDE_PERMISSION_MODE").unwrap_or_else(|| "acceptEdits".to_string()),
+            permission_mode: opt("CLAUDE_PERMISSION_MODE")
+                .unwrap_or_else(|| "acceptEdits".to_string()),
             model: opt("CLAUDE_MODEL"),
             extra_args,
             timeout,

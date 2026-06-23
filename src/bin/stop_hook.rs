@@ -26,7 +26,10 @@ fn main() {
 }
 
 fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let flag = std::env::var("CLAUDE_SLACK_NOTIFY").unwrap_or_default().trim().to_lowercase();
+    let flag = std::env::var("CLAUDE_SLACK_NOTIFY")
+        .unwrap_or_default()
+        .trim()
+        .to_lowercase();
     if !TRUTHY.contains(&flag.as_str()) {
         return Ok(()); // opt-in only — stay quiet for ordinary sessions
     }
@@ -34,7 +37,8 @@ fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut payload = String::new();
     std::io::stdin().read_to_string(&mut payload)?;
 
-    let config = Config::load().map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.into() })?;
+    let config =
+        Config::load().map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.into() })?;
 
     let channel = std::env::var("SLACK_NOTIFY_CHANNEL")
         .ok()

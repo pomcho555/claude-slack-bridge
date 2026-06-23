@@ -6,19 +6,10 @@
 //! process-global env vars (`FAKE_CLAUDE_*`) that would race under cargo's
 //! default per-test parallelism.
 
-use std::path::PathBuf;
-
 use slack_claude_bridge::claude_runner::ClaudeRunner;
 
 fn fake_claude() -> String {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .join("tests")
-        .join("fake_claude.py")
-        .to_str()
-        .unwrap()
-        .to_string()
+    env!("CARGO_BIN_EXE_fake_claude").to_string()
 }
 
 fn runner(binary: &str, timeout: u64) -> ClaudeRunner {
@@ -35,7 +26,14 @@ fn runner(binary: &str, timeout: u64) -> ClaudeRunner {
 #[test]
 fn runner_behaviors() {
     // Clean slate for env-driven fake behavior.
-    for k in ["FAKE_CLAUDE_SESSION", "FAKE_CLAUDE_RESULT", "FAKE_CLAUDE_ERROR", "FAKE_CLAUDE_RAW", "FAKE_CLAUDE_SLEEP", "FAKE_CLAUDE_LOG"] {
+    for k in [
+        "FAKE_CLAUDE_SESSION",
+        "FAKE_CLAUDE_RESULT",
+        "FAKE_CLAUDE_ERROR",
+        "FAKE_CLAUDE_RAW",
+        "FAKE_CLAUDE_SLEEP",
+        "FAKE_CLAUDE_LOG",
+    ] {
         std::env::remove_var(k);
     }
 
@@ -71,9 +69,13 @@ fn runner_behaviors() {
         assert!(!res.is_error);
 
         let logged = std::fs::read_to_string(&log).unwrap();
-        let entry: serde_json::Value = serde_json::from_str(logged.lines().next().unwrap()).unwrap();
+        let entry: serde_json::Value =
+            serde_json::from_str(logged.lines().next().unwrap()).unwrap();
         assert_eq!(entry["resume"].as_str(), Some("sess-xyz"));
-        assert!(entry["prompt"].as_str().unwrap().contains("continue please"));
+        assert!(entry["prompt"]
+            .as_str()
+            .unwrap()
+            .contains("continue please"));
 
         std::env::remove_var("FAKE_CLAUDE_LOG");
         std::env::remove_var("FAKE_CLAUDE_SESSION");
@@ -89,7 +91,10 @@ fn runner_behaviors() {
         let elapsed = start.elapsed();
         assert!(res.is_error, "timeout should be an error");
         assert!(res.text.contains("timed out"), "got: {:?}", res.text);
-        assert!(elapsed.as_secs() < 4, "should have killed near 1s, took {elapsed:?}");
+        assert!(
+            elapsed.as_secs() < 4,
+            "should have killed near 1s, took {elapsed:?}"
+        );
         std::env::remove_var("FAKE_CLAUDE_SLEEP");
     }
 }
