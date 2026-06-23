@@ -44,15 +44,10 @@ jobs:
           ignore-unfixed: true
           exit-code: "1"
 
-  # PR-time dependency review with a severity gate.
-  dependency-review:
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/dependency-review-action@v4
-        with:
-          fail-on-severity: high
+  # NOTE: GitHub's dependency-review-action is intentionally omitted — it
+  # requires GitHub Advanced Security (Dependency Graph), which a private repo
+  # doesn't have, so it errors on PRs. The cargo-deny + cargo-audit (e2e) gates
+  # cover dependency vulnerabilities instead.
 
   # Rust dependency vuln/license/source gate (the failing CI gate; Dependabot
   # alone only notifies, it does not block).
