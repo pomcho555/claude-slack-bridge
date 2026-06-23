@@ -1,0 +1,53 @@
+name: scorecard
+
+on:
+  # Re-run when branch protection settings change (feeds the Branch-Protection check).
+  branch_protection_rule:
+  # Weekly, Monday 07:00 UTC — keep the published score fresh.
+  schedule:
+    - cron: "0 7 * * 1"
+  # Publishing only happens from the default branch.
+  push:
+    branches: [main]
+
+# Default to read-only; the analysis job elevates only what it needs.
+permissions: read-all
+
+jobs:
+  analysis:
+    name: Scorecard analysis
+    runs-on: ubuntu-latest
+    permissions:
+      # Upload the SARIF results to GitHub code scanning.
+      security-events: write
+      # Publish results to the OpenSSF API so the README badge has data.
+      id-token: write
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Run analysis
+        uses: ossf/scorecard-action@v2.4.0
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          # Publish the score to the OpenSSF API; required for the badge.
+          publish_results: true
+
+      # Keep the raw SARIF around for debugging the run.
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SARIF file
+          path: results.sarif
+          retention-days: 5
+
+      # Surface findings in the Security tab (free on public repos).
+      - name: Upload SARIF to code scanning
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif
