@@ -1,0 +1,19 @@
+[package]
+name = "slack-claude-bridge"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Bridge Slack <-> Claude Code (Rust port of the Python v0)"
+
+[lib]
+name = "slack_claude_bridge"
+path = "src/lib.rs"
+
+[[bin]]
+name = "slack-claude-bridge"
+path = "src/bin/bridge.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.32", features = ["bundled"] }
