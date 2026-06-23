@@ -21,7 +21,18 @@ the stop-hook flush race). The Slack transport is wired with
 | outbound push | `src/notify.rs` (`push_result`) | ✅ implemented |
 | transcript parsing + flush-race poll | `src/stop_hook.rs` (`assistant_text`, `is_human_turn`, `answer_for_last_turn`, `final_message`) | ✅ implemented |
 | stop-hook orchestration | `src/stop_hook.rs` (`run`) | ✅ implemented |
-| Slack Socket Mode wiring / `main` | `src/bin/bridge.rs` | ✅ implemented (slack-morphism) |
+| shared Slack impl (`Poster` + `SlackClient`) | `src/slack.rs` (`RealSlack`) | ✅ implemented (slack-morphism) |
+| Socket Mode bridge | `src/bin/bridge.rs` (`slack-claude-bridge`) | ✅ implemented |
+| outbound CLIs | `src/bin/{job,notify,stop_hook}.rs` | ✅ implemented |
+
+### Binaries (parity with the Python console scripts)
+
+| binary | mirrors | purpose |
+|---|---|---|
+| `slack-claude-bridge` | `app:main` | Socket Mode bridge (mention → job → result; reply → resume) |
+| `slack-claude-job` | `job:run_job_main` | run a prompt locally, push result + seed thread |
+| `slack-claude-notify` | `job:notify_main` | push text for an existing session id |
+| `slack-claude-stop-hook` | `stop_hook:main` | Claude Code Stop-hook (opt-in via `CLAUDE_SLACK_NOTIFY`) |
 
 ### Transport design
 

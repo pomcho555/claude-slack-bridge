@@ -18,5 +18,6 @@ pub mod app;
 pub mod claude_runner;
 pub mod config;
 pub mod notify;
+pub mod slack;
 pub mod stop_hook;
 pub mod store;

@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 license = "MIT"
 description = "Bridge Slack <-> Claude Code (Rust port of the Python v0)"
+autobins = false
 
 [lib]
 name = "slack_claude_bridge"
@@ -12,6 +13,18 @@ path = "src/lib.rs"
 [[bin]]
 name = "slack-claude-bridge"
 path = "src/bin/bridge.rs"
+
+[[bin]]
+name = "slack-claude-job"
+path = "src/bin/job.rs"
+
+[[bin]]
+name = "slack-claude-notify"
+path = "src/bin/notify.rs"
+
+[[bin]]
+name = "slack-claude-stop-hook"
+path = "src/bin/stop_hook.rs"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }

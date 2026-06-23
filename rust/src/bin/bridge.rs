@@ -11,78 +11,13 @@ use std::sync::Arc;
 
 use slack_morphism::prelude::*;
 use tokio::runtime::Handle;
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 
-use slack_claude_bridge::app::{self, Event, Poster, ThreadWorkers};
+use slack_claude_bridge::app::{self, Event, ThreadWorkers};
 use slack_claude_bridge::claude_runner::ClaudeRunner;
 use slack_claude_bridge::config::Config;
+use slack_claude_bridge::slack::RealSlack;
 use slack_claude_bridge::store::SessionStore;
-
-/// Real Slack Web API surface backing the core's `Poster` seam. Cloneable
-/// (Arc/handle/token), and its sync methods bridge to slack-morphism's async
-/// API via the tokio runtime handle — only ever called from non-runtime
-/// threads (see module docs).
-#[derive(Clone)]
-struct RealSlack {
-    client: Arc<SlackHyperClient>,
-    token: SlackApiToken,
-    rt: Handle,
-}
-
-impl Poster for RealSlack {
-    fn post(&self, channel: &str, thread_ts: Option<&str>, text: &str) {
-        let mut req = SlackApiChatPostMessageRequest::new(
-            SlackChannelId(channel.to_string()),
-            SlackMessageContent::new().with_text(text.to_string()),
-        );
-        if let Some(ts) = thread_ts {
-            req = req.with_thread_ts(SlackTs(ts.to_string()));
-        }
-        let (client, token) = (self.client.clone(), self.token.clone());
-        let res = self
-            .rt
-            .block_on(async move { client.open_session(&token).chat_post_message(&req).await });
-        if let Err(e) = res {
-            error!("chat.postMessage failed: {e}");
-        }
-    }
-
-    fn upload(&self, channel: &str, thread_ts: Option<&str>, filename: &str, title: &str, content: &str) {
-        let (client, token) = (self.client.clone(), self.token.clone());
-        let (channel, filename, title) = (channel.to_string(), filename.to_string(), title.to_string());
-        let thread = thread_ts.map(|s| s.to_string());
-        let bytes = content.as_bytes().to_vec();
-        // files_upload_v2 flow: get URL -> PUT bytes -> complete.
-        let res = self.rt.block_on(async move {
-            let session = client.open_session(&token);
-            let url = session
-                .get_upload_url_external(&SlackApiFilesGetUploadUrlExternalRequest::new(
-                    filename,
-                    bytes.len(),
-                ))
-                .await?;
-            session
-                .files_upload_via_url(&SlackApiFilesUploadViaUrlRequest::new(
-                    url.upload_url.clone(),
-                    bytes,
-                    "text/markdown".to_string(),
-                ))
-                .await?;
-            let mut complete = SlackApiFilesCompleteUploadExternalRequest::new(vec![
-                SlackApiFilesComplete::new(url.file_id.clone()).with_title(title),
-            ])
-            .with_channel_id(SlackChannelId(channel));
-            if let Some(t) = thread {
-                complete = complete.with_thread_ts(SlackTs(t));
-            }
-            session.files_complete_upload_external(&complete).await?;
-            Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
-        });
-        if let Err(e) = res {
-            error!("file upload failed: {e}");
-        }
-    }
-}
 
 /// Everything the core needs, shared across events via the listener user-state.
 struct AppState {
@@ -204,7 +139,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         extra_args: config.extra_args.clone(),
         timeout: config.timeout,
     };
-    let poster = RealSlack { client: client.clone(), token: bot_token, rt: Handle::current() };
+    let poster = RealSlack::new(client.clone(), bot_token, Handle::current());
 
     let app_state = Arc::new(AppState {
         poster,
