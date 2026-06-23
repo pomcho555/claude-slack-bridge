@@ -1,5 +1,7 @@
 # Slack ↔ Claude Code bridge
 
+[![e2e](https://github.com/pomcho555/claude-slack-bridge/actions/workflows/e2e.yml/badge.svg)](https://github.com/pomcho555/claude-slack-bridge/actions/workflows/e2e.yml)
+
 Run long Claude Code jobs from Slack and reply to them from your phone.
 
 A mention starts a job; the bot runs `claude` headless on your machine and posts
