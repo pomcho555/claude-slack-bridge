@@ -10,6 +10,9 @@ homepage = "https://github.com/pomcho555/claude-slack-bridge"
 readme = "README.md"
 keywords = ["slack", "claude", "claude-code", "bot", "socket-mode"]
 categories = ["command-line-utilities", "development-tools"]
+# Keep the published crate lean; the README image still renders on crates.io
+# (relative links are rewritten to the repository).
+exclude = ["/assets", "/.github"]
 autobins = false
 default-run = "slack-claude-bridge"
 

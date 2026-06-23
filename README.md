@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/icon.png" alt="Slack ↔ Claude Code bridge" width="160">
+</p>
+
 # Slack ↔ Claude Code bridge
 
 [![e2e](https://github.com/pomcho555/claude-slack-bridge/actions/workflows/e2e.yml/badge.svg)](https://github.com/pomcho555/claude-slack-bridge/actions/workflows/e2e.yml)
