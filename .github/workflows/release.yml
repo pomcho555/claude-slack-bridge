@@ -1,0 +1,103 @@
+name: release
+
+# Auto-release on a version bump: when a commit lands on `main` whose
+# Cargo.toml version has no matching `vX.Y.Z` tag yet, build + test, publish to
+# crates.io, then create the tag and a GitHub Release. Pushes that don't change
+# the version are a no-op (the tag already exists), so this is safe to run on
+# every push to main.
+on:
+  push:
+    branches: [main]
+
+# Don't let two releases run at once.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # Cheap gate: decide whether this version needs releasing, without a toolchain.
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      release: ${{ steps.v.outputs.release }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Resolve version and whether it needs a release
+        id: v
+        run: |
+          set -euo pipefail
+          version="$(grep -m1 -E '^version *=' Cargo.toml | sed -E 's/^version *= *"([^"]+)".*/\1/')"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if git ls-remote --exit-code --tags origin "refs/tags/v$version" >/dev/null 2>&1; then
+            echo "Tag v$version already exists — nothing to release."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "v$version is new — will release."
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  release:
+    needs: check
+    if: needs.check.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the tag and create the GitHub Release
+      id-token: write # OIDC, for crates.io Trusted Publishing
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      # Gate the release on a green build + tests, even though e2e already ran
+      # on the PR — main must be releasable, not just mergeable.
+      - name: Test
+        run: cargo test --locked --verbose
+
+      # Idempotency: if the crate version is somehow already on crates.io (e.g. a
+      # prior run published but failed before tagging), skip publish and just
+      # tag, so re-running converges instead of erroring on a duplicate upload.
+      - name: Check crates.io for this version
+        id: published
+        run: |
+          set -euo pipefail
+          if curl -fsS -H 'User-Agent: claude-slack-bridge-release' \
+               "https://crates.io/api/v1/crates/slack-claude-bridge/$VERSION" >/dev/null 2>&1; then
+            echo "already=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "already=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Authenticate to crates.io (Trusted Publishing)
+        if: steps.published.outputs.already == 'false'
+        uses: rust-lang/crates-io-auth-action@v1
+        id: auth
+
+      - name: Publish to crates.io
+        if: steps.published.outputs.already == 'false'
+        run: cargo publish --locked
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+
+      - name: Tag the release
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git tag -a "v$VERSION" -m "v$VERSION"
+          git push origin "v$VERSION"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "v$VERSION" --title "v$VERSION" --generate-notes
