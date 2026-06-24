@@ -114,6 +114,92 @@ fn stop_hook_does_not_require_app_token() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// `config.toml` is honoured as a config source. With NO `SLACK_BOT_TOKEN` in
+/// the environment but a `config.toml` supplying it (under a temp
+/// `XDG_CONFIG_HOME`), the hook must load config successfully and reach the
+/// missing-channel guard — proving the file layer was consulted.
+#[test]
+fn config_toml_is_consulted_as_a_source() {
+    let dir = empty_workdir("cfgtoml");
+    let xdg = dir.join("xdg");
+    let cfg_dir = xdg.join("claude-slack-bridge");
+    std::fs::create_dir_all(&cfg_dir).unwrap();
+    std::fs::write(
+        cfg_dir.join("config.toml"),
+        "SLACK_BOT_TOKEN = \"xoxb-from-file\"\n",
+    )
+    .unwrap();
+    let path = std::env::var("PATH").unwrap_or_default();
+
+    let mut child = Command::new(bin("slack-claude-stop-hook"))
+        .current_dir(&dir)
+        .env_clear()
+        .env("PATH", path)
+        .env("XDG_CONFIG_HOME", &xdg)
+        .env("CLAUDE_SLACK_NOTIFY", "1")
+        // intentionally NO SLACK_BOT_TOKEN in the env — it must come from config.toml
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(b"{\"session_id\":\"s\",\"transcript_path\":\"/nonexistent\"}")
+        .unwrap();
+    let out = child.wait_with_output().unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+
+    assert!(out.status.success(), "hook always exits 0");
+    assert!(
+        !stderr.contains("Missing required setting"),
+        "bot token should have been read from config.toml; stderr: {stderr}"
+    );
+    assert!(
+        stderr.contains("SLACK_NOTIFY_CHANNEL"),
+        "expected to reach the channel guard (config loaded from file); stderr: {stderr}"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The first-run prompt must be skipped without a TTY: a non-interactive bridge
+/// run with nothing configured must fail at config load (silent fallback to env
+/// vars) and must NOT write a `config.toml`.
+#[test]
+fn bridge_does_not_prompt_or_write_config_without_tty() {
+    let dir = empty_workdir("notty");
+    let xdg = dir.join("xdg");
+    std::fs::create_dir_all(&xdg).unwrap();
+    let cfg = xdg.join("claude-slack-bridge").join("config.toml");
+    let path = std::env::var("PATH").unwrap_or_default();
+
+    // `.output()` gives the child a null (non-terminal) stdin.
+    let out = Command::new(bin("slack-claude-bridge"))
+        .current_dir(&dir)
+        .env_clear()
+        .env("PATH", path)
+        .env("XDG_CONFIG_HOME", &xdg)
+        // no Slack tokens at all
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+
+    assert!(!out.status.success(), "bridge should fail unconfigured");
+    assert!(
+        stderr.contains("Configuration error"),
+        "expected config error, not an interactive prompt; stderr: {stderr}"
+    );
+    assert!(
+        !cfg.exists(),
+        "non-interactive run must not create config.toml"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// Contrast: the bridge still requires `SLACK_APP_TOKEN` (Socket Mode needs it),
 /// failing at config load before any network.
 #[test]

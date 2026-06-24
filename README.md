@@ -110,8 +110,13 @@ Then:
 
 ### 2. Configure
 
-Create a working directory for the bridge and add a `.env` there
-([`.env.example`](.env.example) lists every option):
+**First run (no setup needed):** launch `slack-claude-bridge` in a terminal with
+nothing configured and it walks you through the required settings, then saves
+them to `~/.config/claude-slack-bridge/config.toml` (created `0600`). Skip to
+[Run](#3-run) if you'd rather be prompted.
+
+**Prefer a file/env?** Create a working directory for the bridge and add a `.env`
+there ([`.env.example`](.env.example) lists every option):
 
 ```bash
 # .env
@@ -121,7 +126,10 @@ ALLOWED_USERS=U0123ABCD         # your Slack user ID(s), comma-separated
 CLAUDE_WORKDIR=/path/to/repo    # the repo you want Claude to work in
 ```
 
-`.env` is loaded automatically from the working directory (real env vars win).
+Settings are resolved in this order (first one set wins): **environment
+variable → `.env` → `config.toml`**. `.env` is loaded automatically from the
+working directory. The first-run prompt is skipped when there's no terminal
+(e.g. the Stop hook), which falls back to env vars silently.
 
 > ⚠️ Anyone allowed to trigger the bot can run Claude Code on your machine with
 > the configured permission mode. Set `ALLOWED_USERS`.
