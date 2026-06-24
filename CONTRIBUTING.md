@@ -74,3 +74,12 @@ CI gates on `cargo fmt --check`, `cargo clippy -D warnings`, and `cargo audit`.
 A separate [security workflow](.github/workflows/security.yml) runs cargo-deny,
 Trivy (SCA), Syft (SBOM), and TruffleHog. Please run `cargo fmt` and
 `cargo clippy` locally before opening a pull request.
+
+## Releasing
+
+Releases are automated by [`release.yml`](.github/workflows/release.yml): **bump
+`version` in `Cargo.toml` in your PR**, and when it merges to `main` the workflow
+tags `vX.Y.Z`, publishes to crates.io (via OIDC [Trusted
+Publishing](https://crates.io/docs/trusted-publishing) — no stored token), and
+cuts a GitHub Release. Pushes that don't change the version are a no-op, so the
+only step is the version bump. Follow [SemVer](https://semver.org/).
