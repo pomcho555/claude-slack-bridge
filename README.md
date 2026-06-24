@@ -136,13 +136,30 @@ working directory. The first-run prompt is skipped when there's no terminal
 
 ### 3. Run
 
-From that directory:
+Start the bridge:
 
 ```bash
 slack-claude-bridge
 ```
 
-Leave it running on your home server while jobs execute.
+On the **first run** with nothing configured, it walks you through setup and
+saves a `config.toml` for next time:
+
+```text
+No config found — let's set up claude-slack-bridge.
+Answers are saved to config.toml; press Enter to skip an optional field.
+
+Slack bot token (xoxb-…): xoxb-…
+Slack app token (xapp-…, for Socket Mode): xapp-…
+Allowed Slack user IDs, comma-separated (recommended; empty = everyone): U0123ABCD
+Default notify channel ID (e.g. C0123, optional): C0123ABCD
+Claude working directory (optional, defaults to CWD): /path/to/repo
+
+Saved configuration to ~/.config/claude-slack-bridge/config.toml
+```
+
+After that (or if you configured `.env` / env vars in step 2) it starts straight
+away. Leave it running on your home server while jobs execute.
 
 ## Usage
 

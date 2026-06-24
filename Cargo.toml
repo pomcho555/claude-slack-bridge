@@ -1,6 +1,6 @@
 [package]
 name = "slack-claude-bridge"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 license = "MIT"
 description = "Run long Claude Code jobs from Slack and reply from your phone — a Socket Mode bridge."
