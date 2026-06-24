@@ -88,6 +88,20 @@ env vars. It is a shipped binary so plain `cargo test` works.
 - **Stop hook is opt-in** (`CLAUDE_SLACK_NOTIFY`) and must always exit 0.
 - Match existing style; keep `cargo fmt` / `clippy -D warnings` clean.
 
+## Versioning
+
+This crate follows [SemVer](https://semver.org/). Bump `version` in `Cargo.toml`
+in the same change that ships the work:
+
+- **Patch** (`0.x.Y`) — bug fixes and internal changes with no behavior change.
+- **Minor** (`0.X.0`) — a new feature that is backward-compatible with existing
+  functionality (e.g. the opt-in daemon mode).
+- **Major** (`X.0.0`) — a breaking change to existing behavior, config, or CLI.
+
+Heads-up: the auto-release workflow tags and publishes to crates.io when the
+`Cargo.toml` version changes on `main`, so a version bump *is* a release —
+only land one when the change is ready to ship.
+
 ## Security
 
 - `ALLOWED_USERS` gates who can run Claude on the host. Don't regress the
