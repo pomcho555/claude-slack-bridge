@@ -109,13 +109,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     slack_claude_bridge::cli::handle_help_version(
         "slack-claude-bridge",
         "Run the Slack <-> Claude Code bridge over Socket Mode.\n\n\
-         Usage: slack-claude-bridge   (takes no arguments)\n\n\
+         Usage:\n\
+         \x20 slack-claude-bridge            run in the foreground (default)\n\
+         \x20 slack-claude-bridge start      run detached in the background\n\
+         \x20 slack-claude-bridge stop       stop the background bridge\n\
+         \x20 slack-claude-bridge status     report whether it is running\n\n\
+         `--daemon` is an alias for `start`. The foreground is always the\n\
+         default; backgrounding only ever happens on an explicit subcommand.\n\
+         Background logs go to ~/.local/state/claude-slack-bridge/bridge.log\n\
+         (override with BRIDGE_LOG_FILE / BRIDGE_PID_FILE).\n\n\
          Configured from the environment, or an optional\n\
          ~/.config/claude-slack-bridge/config.toml. On first run with neither,\n\
          an interactive terminal prompts for the required settings and writes\n\
          config.toml. Keys: SLACK_BOT_TOKEN, SLACK_APP_TOKEN, ALLOWED_USERS,\n\
          CLAUDE_WORKDIR, CLAUDE_PERMISSION_MODE, and more (see README).",
     );
+
+    // Daemon control: `start`/`--daemon`, `stop`, `status` each act and exit.
+    // For the re-executed child, no argument, or an unrecognised one, this
+    // returns and the bridge runs in the foreground. Must precede the first-run
+    // prompt so a backgrounded `start` doesn't block on a TTY it has detached
+    // from, and so the child (not the short-lived parent) does the real work.
+    slack_claude_bridge::daemon::dispatch();
 
     // First-run setup: if no config.toml exists, the required tokens aren't
     // already in the environment, and we're on a real terminal, walk the user

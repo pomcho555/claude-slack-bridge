@@ -161,6 +161,40 @@ Saved configuration to ~/.config/claude-slack-bridge/config.toml
 After that (or if you set env vars / `config.toml` in step 2) it starts straight
 away. Leave it running on your home server while jobs execute.
 
+### Running in the background
+
+By default the bridge runs in the **foreground** — it logs to stdout/stderr and
+lets your environment supervise it. That's the right default: under systemd,
+Docker, or tmux, let the supervisor own the process. For a quick detach you can
+also use the usual shell tools:
+
+```bash
+nohup slack-claude-bridge > bridge.log 2>&1 &   # or: run it inside tmux / screen
+```
+
+If you have **no supervisor at all** (e.g. a Kaggle box without systemd), the
+bridge can background itself. Configure it first (run once in the foreground, or
+set env vars / `config.toml`), then:
+
+```bash
+slack-claude-bridge start      # detach and run in the background (alias: --daemon)
+slack-claude-bridge status     # is it running?
+slack-claude-bridge stop       # stop it (SIGTERM)
+```
+
+`start` re-executes the bridge detached from the terminal, so it keeps running
+after you log out. Its output goes to a log file and its PID to a pidfile:
+
+| | default path | override |
+|---|---|---|
+| log | `~/.local/state/claude-slack-bridge/bridge.log` | `BRIDGE_LOG_FILE` |
+| pidfile | `~/.local/state/claude-slack-bridge/bridge.pid` | `BRIDGE_PID_FILE` |
+
+(`~/.local/state` follows `$XDG_STATE_HOME` when set.) Backgrounding is **always
+explicit** — plain `slack-claude-bridge` never daemonizes. The control commands
+are Unix-only. Because the detached process has no terminal, it won't run the
+first-run setup prompt; configure it in the foreground first.
+
 ## Usage
 
 In a channel the bot is in:
