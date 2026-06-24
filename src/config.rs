@@ -1,6 +1,6 @@
-//! Configuration, loaded from the environment (mirror of `config.py`), with an
-//! optional `config.toml` as the lowest-precedence fallback
-//! (env var > `.env` > `config.toml`; see [`crate::config_file`]).
+//! Configuration, loaded from the environment, with an optional `config.toml`
+//! as the lower-precedence fallback (env var > `config.toml`; see
+//! [`crate::config_file`]).
 
 use std::collections::{BTreeMap, HashSet};
 use std::env;
@@ -22,8 +22,7 @@ pub struct Config {
     pub notify_channel: Option<String>,
 }
 
-/// Resolve a setting: an environment variable (which already subsumes `.env`,
-/// since `dotenvy` only fills *unset* vars) wins; otherwise fall back to the
+/// Resolve a setting: an environment variable wins; otherwise fall back to the
 /// `config.toml` map. Empty/whitespace values are treated as absent at each
 /// level so they fall through to the next source.
 fn value(name: &str, file: &BTreeMap<String, String>) -> Option<String> {
@@ -50,17 +49,14 @@ impl Config {
 
     /// Configuration for the Stop hook, which posts with the bot token alone and
     /// never opens a Socket Mode connection. `SLACK_APP_TOKEN` is therefore
-    /// *not* required, so an env-var-only (`.env`-less) hook setup doesn't have
-    /// to set a token it never uses.
+    /// *not* required, so an env-var-only hook setup doesn't have to set a token
+    /// it never uses.
     pub fn load_for_hook() -> Result<Config, String> {
         Self::load_with(false)
     }
 
     fn load_with(require_app_token: bool) -> Result<Config, String> {
-        // Load .env from the current dir (mirrors python-dotenv in config.py).
-        // Missing file is fine; real env vars still win.
-        let _ = dotenvy::dotenv();
-        // Lowest-precedence fallback; empty when no config.toml is present.
+        // Lower-precedence fallback; empty when no config.toml is present.
         let file = config_file::load_default();
 
         let app_token = if require_app_token {

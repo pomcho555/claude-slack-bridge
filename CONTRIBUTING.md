@@ -20,8 +20,8 @@ cargo run --release                                  # the bridge (default binar
 cargo run --release --bin slack-claude-job -- "…"    # a one-off job
 ```
 
-Configuration is identical to an installed build: a `.env` in the working
-directory (see [`.env.example`](.env.example)).
+Configuration is identical to an installed build: environment variables or
+`~/.config/claude-slack-bridge/config.toml` (the first run prompts for it).
 
 A [`Makefile`](Makefile) wraps the common tasks — run `make help` to list them.
 Useful shortcuts: `make check` (format + lint + test, the fast pre-commit gate)
@@ -32,7 +32,8 @@ and `make ci` (everything CI runs).
 The core is transport-agnostic — it writes through the `Poster` / `SlackClient`
 seams — which is what makes it testable without a live Slack.
 
-- **`config.rs`** — loads config from the environment (`.env` via `dotenvy`).
+- **`config.rs`** — loads config from the environment, falling back to
+  `config.toml` (see `config_file.rs`).
 - **`store.rs`** — SQLite map of `thread_ts → session_id` (plus a reverse lookup)
   so a thread survives restarts and reconnects to its Claude session.
 - **`claude_runner.rs`** — invokes `claude --print --output-format json` (adds

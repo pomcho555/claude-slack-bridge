@@ -110,15 +110,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         "slack-claude-bridge",
         "Run the Slack <-> Claude Code bridge over Socket Mode.\n\n\
          Usage: slack-claude-bridge   (takes no arguments)\n\n\
-         Configured from the environment / .env, or an optional\n\
-         ~/.config/claude-slack-bridge/config.toml. On first run with none of\n\
-         these, an interactive terminal prompts for the required settings and\n\
-         writes config.toml. Keys: SLACK_BOT_TOKEN, SLACK_APP_TOKEN, ALLOWED_USERS,\n\
+         Configured from the environment, or an optional\n\
+         ~/.config/claude-slack-bridge/config.toml. On first run with neither,\n\
+         an interactive terminal prompts for the required settings and writes\n\
+         config.toml. Keys: SLACK_BOT_TOKEN, SLACK_APP_TOKEN, ALLOWED_USERS,\n\
          CLAUDE_WORKDIR, CLAUDE_PERMISSION_MODE, and more (see README).",
     );
 
     // First-run setup: if no config.toml exists, the required tokens aren't
-    // already in the env/.env, and we're on a real terminal, walk the user
+    // already in the environment, and we're on a real terminal, walk the user
     // through creating config.toml. Stays silent (and falls back to env vars)
     // when non-interactive. Runs before logging is configured so its prompts
     // aren't interleaved with log lines on stdout.

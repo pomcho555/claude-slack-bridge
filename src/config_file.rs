@@ -1,15 +1,14 @@
 //! Optional `config.toml` config source plus first-run interactive bootstrap.
 //!
-//! `config.toml` is the *lowest*-precedence source (env var > `.env` >
-//! `config.toml`) so a user who already exports the variables — or keeps a
-//! `.env` — is unaffected. Its purpose is to let a first-time user run the
-//! bridge with **no** hand-written `.env`: when the file is absent and the
-//! terminal is interactive, [`bootstrap_default`] walks them through setup and
-//! persists the answers.
+//! `config.toml` is the *lower*-precedence source (env var > `config.toml`) so a
+//! user who already exports the variables is unaffected. Its purpose is to let a
+//! first-time user run the bridge with **no** manual configuration: when the
+//! file is absent and the terminal is interactive, [`bootstrap_default`] walks
+//! them through setup and persists the answers.
 //!
 //! Keys mirror the environment-variable names verbatim (e.g. `SLACK_BOT_TOKEN`)
 //! so the value lookup in `config.rs` is a single 1:1 map, and the file is
-//! self-documenting against the README / `.env.example`.
+//! self-documenting against the README.
 //!
 //! The reader/writer handle a deliberately small, flat subset of TOML
 //! (`KEY = "value"`, `#` comments, blank lines) — enough for what we generate
@@ -28,7 +27,7 @@ const FILE_NAME: &str = "config.toml";
 /// falling back to `$HOME/.config/claude-slack-bridge/config.toml`.
 ///
 /// Returns `None` when neither `XDG_CONFIG_HOME` nor `HOME` is set, in which
-/// case there is simply no config-file layer (env / `.env` still apply).
+/// case there is simply no config-file layer (environment variables still apply).
 pub fn default_path() -> Option<PathBuf> {
     let base = std::env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
@@ -112,8 +111,8 @@ fn unquote(value: &str) -> String {
 fn render(map: &BTreeMap<String, String>) -> String {
     let mut out = String::from(
         "# claude-slack-bridge configuration\n\
-         # Lowest precedence: an environment variable or .env entry of the same\n\
-         # name overrides the value here. Created by first-run setup; safe to edit.\n\n",
+         # Lower precedence: an environment variable of the same name overrides\n\
+         # the value here. Created by first-run setup; safe to edit.\n\n",
     );
     for (key, value) in map {
         out.push_str(key);
@@ -176,7 +175,7 @@ fn write(path: &std::path::Path, map: &BTreeMap<String, String>) -> Result<(), S
 /// hold, so it never surprises an already-working setup or a scripted run:
 ///
 /// 1. the default `config.toml` does not yet exist,
-/// 2. the required Slack tokens are not already present via env / `.env`, and
+/// 2. the required Slack tokens are not already present in the environment, and
 /// 3. `interactive` is true (the bridge passes stdin's TTY-ness).
 ///
 /// Per the design, non-interactive contexts (no TTY — e.g. the Stop hook) fall
@@ -189,10 +188,8 @@ pub fn bootstrap_default(interactive: bool) -> Result<bool, String> {
         return Ok(false);
     }
 
-    // Pick up a working-directory .env so an existing setup is recognised.
-    let _ = dotenvy::dotenv();
     if env_present("SLACK_BOT_TOKEN") && env_present("SLACK_APP_TOKEN") {
-        return Ok(false); // already configured elsewhere — don't prompt
+        return Ok(false); // already configured via the environment — don't prompt
     }
 
     if !interactive {

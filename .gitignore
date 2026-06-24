@@ -1,3 +1,5 @@
+# Not a config source anymore (use config.toml or env vars), but kept ignored
+# so a stray secrets file can never be committed.
 .env
 *.db
 /target

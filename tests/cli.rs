@@ -58,7 +58,7 @@ fn help_flag_prints_usage() {
     }
 }
 
-/// A unique, empty working dir (no `.env`) so config comes purely from the env.
+/// A unique, empty working dir so config comes purely from the environment.
 fn empty_workdir(tag: &str) -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!("scb-cli-test-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
