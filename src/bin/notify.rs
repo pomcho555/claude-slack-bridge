@@ -69,7 +69,7 @@ fn main() {
         .or_else(|| config.notify_channel.clone())
         .unwrap_or_else(|| {
             eprintln!(
-                "No target channel. Pass --channel C0123 or set SLACK_NOTIFY_CHANNEL in .env."
+                "No target channel. Pass --channel C0123 or set SLACK_NOTIFY_CHANNEL in the environment or config.toml."
             );
             exit(2);
         });

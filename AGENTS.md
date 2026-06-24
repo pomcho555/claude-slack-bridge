@@ -17,7 +17,8 @@ removed once the Rust port reached parity).
 
 ```
 src/
-  config.rs         env/.env config (dotenvy)
+  config.rs         env-var config + config.toml fallback
+  config_file.rs    config.toml source + first-run interactive bootstrap
   store.rs          SQLite thread_ts <-> session_id map (+ reverse lookup)
   claude_runner.rs  spawns `claude --print --output-format json`, parses it
   app.rs            inbound core: handle_mention/handle_message, Poster &
@@ -80,8 +81,10 @@ env vars. It is a shipped binary so plain `cargo test` works.
   from inside an async task.
 - **One Slack thread = one Claude session.** Preserve the `thread_ts ↔
   session_id` invariant (`store.rs`, and `find_by_session` reuse in `notify.rs`).
-- **`.env`** is loaded by `dotenvy` in `Config::load` from the working dir; real
-  env vars win. Never commit secrets — `.env` is gitignored and must stay so.
+- **Config** resolves env var > `config.toml`
+  (`~/.config/claude-slack-bridge/config.toml`), via `Config::load`. First run on
+  a TTY bootstraps `config.toml` interactively (`config_file.rs`). Never commit
+  secrets — `.env` stays gitignored even though it is no longer a config source.
 - **Stop hook is opt-in** (`CLAUDE_SLACK_NOTIFY`) and must always exit 0.
 - Match existing style; keep `cargo fmt` / `clippy -D warnings` clean.
 

@@ -110,31 +110,56 @@ Then:
 
 ### 2. Configure
 
-Create a working directory for the bridge and add a `.env` there
-([`.env.example`](.env.example) lists every option):
+**Nothing to do up front.** On its first run, `slack-claude-bridge` prompts you
+for the required settings and writes them to
+`~/.config/claude-slack-bridge/config.toml` (created `0600`). Skip straight to
+[Run](#3-run) and let it walk you through setup.
 
-```bash
-# .env
-SLACK_BOT_TOKEN=xoxb-…          # from "Install App"
-SLACK_APP_TOKEN=xapp-…          # the connections:write app-level token
-ALLOWED_USERS=U0123ABCD         # your Slack user ID(s), comma-separated
-CLAUDE_WORKDIR=/path/to/repo    # the repo you want Claude to work in
+**Prefer to set it yourself?** Provide the values as environment variables, or
+write `config.toml` by hand:
+
+```toml
+# ~/.config/claude-slack-bridge/config.toml
+SLACK_BOT_TOKEN = "xoxb-…"       # from "Install App"
+SLACK_APP_TOKEN = "xapp-…"       # the connections:write app-level token
+ALLOWED_USERS = "U0123ABCD"      # your Slack user ID(s), comma-separated
+CLAUDE_WORKDIR = "/path/to/repo" # the repo you want Claude to work in
 ```
 
-`.env` is loaded automatically from the working directory (real env vars win).
+Settings are resolved in this order (first one set wins): **environment
+variable → `config.toml`**. The first-run prompt is skipped when there's no
+terminal (e.g. the Stop hook), which falls back to environment variables
+silently.
 
 > ⚠️ Anyone allowed to trigger the bot can run Claude Code on your machine with
 > the configured permission mode. Set `ALLOWED_USERS`.
 
 ### 3. Run
 
-From that directory:
+Start the bridge:
 
 ```bash
 slack-claude-bridge
 ```
 
-Leave it running on your home server while jobs execute.
+On the **first run** with nothing configured, it walks you through setup and
+saves a `config.toml` for next time:
+
+```text
+No config found — let's set up claude-slack-bridge.
+Answers are saved to config.toml; press Enter to skip an optional field.
+
+Slack bot token (xoxb-…): xoxb-…
+Slack app token (xapp-…, for Socket Mode): xapp-…
+Allowed Slack user IDs, comma-separated (recommended; empty = everyone): U0123ABCD
+Default notify channel ID (e.g. C0123, optional): C0123ABCD
+Claude working directory (optional, defaults to CWD): /path/to/repo
+
+Saved configuration to ~/.config/claude-slack-bridge/config.toml
+```
+
+After that (or if you set env vars / `config.toml` in step 2) it starts straight
+away. Leave it running on your home server while jobs execute.
 
 ## Usage
 
@@ -161,11 +186,12 @@ able to reply — when it finishes hours later. These binaries post a result to
 Slack **and** seed the thread with the Claude session, so replying in that thread
 (mention the bot) continues the same session via `--resume`.
 
-Set a default target channel first (the bot must be a member):
+Set a default target channel first (the bot must be a member) — in `config.toml`
+or the environment:
 
-```bash
-# in .env
-SLACK_NOTIFY_CHANNEL=C0123ABCD     # or pass --channel per call
+```toml
+# in ~/.config/claude-slack-bridge/config.toml
+SLACK_NOTIFY_CHANNEL = "C0123ABCD"   # or pass --channel per call
 ```
 
 ### `slack-claude-job` — run a job and push its result
@@ -228,8 +254,10 @@ for the Socket Mode bridge), so an env-var-only setup works:
 SLACK_BOT_TOKEN=xoxb-… SLACK_NOTIFY_CHANNEL=C0123 CLAUDE_SLACK_NOTIFY=1 claude
 ```
 
-Otherwise run it from the bridge directory so it loads the same `.env` and
-`bridge.db`. All four binaries accept `--help` and `--version`.
+`config.toml` is read from `~/.config/claude-slack-bridge/` regardless of the
+working directory; run the hook from the bridge directory if you want it to share
+the same `bridge.db` (so replies continue the same session). All four binaries
+accept `--help` and `--version`.
 
 ## Handoff model — read this
 

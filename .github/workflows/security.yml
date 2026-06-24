@@ -14,7 +14,7 @@ permissions:
   security-events: write
 
 jobs:
-  # Secret hygiene: the app handles xoxb-/xapp- tokens and ships .env.example.
+  # Secret hygiene: the app handles xoxb-/xapp- tokens (stored in config.toml).
   secret-scan:
     runs-on: ubuntu-latest
     steps:
