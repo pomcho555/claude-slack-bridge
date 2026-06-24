@@ -165,16 +165,16 @@ away. Leave it running on your home server while jobs execute.
 
 By default the bridge runs in the **foreground** — it logs to stdout/stderr and
 keeps running until you press Ctrl-C. To keep it running after you close the
-terminal or log out, background it with the built-in `--daemon` option (no
+terminal or log out, background it with the built-in `start` command (no
 `nohup`, `systemd`, or `tmux` needed):
 
 ```bash
-slack-claude-bridge --daemon    # run in the background (same as: start)
+slack-claude-bridge start       # run in the background
 slack-claude-bridge status      # is it running?
 slack-claude-bridge stop        # stop it (SIGTERM)
 ```
 
-`--daemon` (and its alias `start`) re-executes the bridge detached from the
+`start` (also spelled `--daemon`) re-executes the bridge detached from the
 terminal, so it keeps running after you log out. Configure it first — run once
 in the foreground, or set env vars / `config.toml` — because the detached
 process has no terminal and so can't show the first-run setup prompt.
